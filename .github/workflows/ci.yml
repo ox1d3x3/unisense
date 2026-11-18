@@ -30,7 +30,7 @@ jobs:
       - name: Lint shell scripts
         run: |
           sudo apt-get install -y shellcheck >/dev/null
-          shellcheck -s sh install.sh scripts/package.sh scripts/check-plugin.sh tests/test-install.sh
+          shellcheck -s sh install.sh scripts/package.sh scripts/check-plugin.sh tests/test-install.sh tests/test-real-php.sh
       - name: Installer tests
         run: sh tests/test-install.sh
       - name: Package
@@ -55,8 +55,15 @@ jobs:
           git clone -q --depth 1 --branch "stable/${{ matrix.core }}" --filter=blob:none --sparse \
             https://github.com/opnsense/core "$RUNNER_TEMP/core"
           git -C "$RUNNER_TEMP/core" sparse-checkout set --no-cone \
-            '/src/opnsense/www/' '/src/opnsense/mvc/app/views/' '/src/opnsense/mvc/app/controllers/' \
-            '/src/opnsense/mvc/app/models/' '/src/www/*.inc'
+            '/src/opnsense/www/' '/src/opnsense/mvc/' '/src/etc/' '/src/www/*.inc'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: phalcon5, simplexml, dom, json, gettext
+          tools: none
+          coverage: none
+      - name: Installer PHP steps for real (settheme, migrations, Network Map model)
+        run: sudo env "PATH=$PATH" sh tests/test-real-php.sh "$RUNNER_TEMP/core"
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'

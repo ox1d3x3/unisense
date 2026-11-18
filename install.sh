@@ -144,7 +144,11 @@ set_theme() {
 		warn "cannot change the theme automatically; select it in System > Settings > General"
 		return 1
 	fi
-	out="$("$PHP" "$SETTHEME" "$1" 2>&1)" || { warn "could not select theme $1: $out"; return 1; }
+	out="$("$PHP" "$SETTHEME" "$1" 2>&1)" || {
+		warn "could not select theme $1 automatically — select it in System > Settings > General"
+		printf '%s\n' "$out" | sed -n '1,6s/^/     /p' >&2
+		return 1
+	}
 	return 0
 }
 
@@ -349,7 +353,10 @@ do_install() {
 
 	# 3. register the model version (what an OPNsense plugin package does)
 	if [ -x "$PHP" ] && [ -f "$MIGRATE" ]; then
-		"$PHP" "$MIGRATE" OPNsense/Unisense >/dev/null 2>&1 || warn "model migration reported a problem (harmless on first install)"
+		if ! out="$("$PHP" "$MIGRATE" OPNsense/Unisense 2>&1)"; then
+			warn "model migration reported a problem (device names may not save until the next reboot)"
+			printf '%s\n' "$out" | sed -n '1,6s/^/     /p' >&2
+		fi
 	fi
 	refresh_gui
 

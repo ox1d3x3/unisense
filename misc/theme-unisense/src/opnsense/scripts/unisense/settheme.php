@@ -34,9 +34,20 @@
  *   settheme.php NAME       select theme NAME (must exist in www/themes)
  */
 
-require_once('config.inc');
+/*
+ * Uses the MVC configuration API like core's own CLI scripts
+ * (firmware/register.php, auth/add_user.php); the legacy write_config()
+ * path needs includes (util.inc, ...) that differ between releases.
+ */
+require_once('script/load_phalcon.php');
 
-$current = !empty($config['theme']) ? (string)$config['theme'] : 'opnsense';
+use OPNsense\Core\Config;
+
+$cnf = Config::getInstance();
+$current = trim((string)$cnf->object()->theme);
+if ($current === '') {
+    $current = 'opnsense';
+}
 
 if (empty($argv[1])) {
     echo $current . PHP_EOL;
@@ -49,15 +60,20 @@ if (!preg_match('/^[A-Za-z0-9_.-]+$/', $theme) || !is_dir('/usr/local/opnsense/w
     exit(1);
 }
 
-if ($current === $theme) {
-    echo "unchanged" . PHP_EOL;
-    exit(0);
-}
-
-$config['theme'] = $theme;
-$result = write_config(sprintf('GUI theme set to %s', $theme));
-if (!is_array($result)) {
-    fwrite(STDERR, "could not save the configuration" . PHP_EOL);
+try {
+    $cnf->lock();   // reloads the file, so nothing written meanwhile is lost
+    $root = $cnf->object();
+    if (trim((string)$root->theme) === $theme) {
+        $cnf->unlock();
+        echo "unchanged" . PHP_EOL;
+        exit(0);
+    }
+    $root->theme = $theme;
+    $cnf->save(['description' => sprintf('GUI theme set to %s', $theme)]);
+    $cnf->unlock();
+} catch (Throwable $e) {
+    $cnf->unlock();
+    fwrite(STDERR, "could not save the configuration: " . $e->getMessage() . PHP_EOL);
     exit(1);
 }
 echo "ok" . PHP_EOL;

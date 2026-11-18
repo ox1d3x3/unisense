@@ -252,6 +252,7 @@ npm ci
 npm run build      # compile assets/stylesheets -> build/css
 npm run lint       # stylesheet checks (parse, colour tokens, url()) + ESLint on the browser scripts
 npm test           # build check + lint + installer tests (tests/test-install.sh)
+sudo sh tests/test-real-php.sh /path/to/opnsense-core   # settheme, migrations and the Network Map model run for real (PHP + phalcon; needs root)
 sh scripts/check-plugin.sh   # PHP syntax, XML, model masks, Volt helpers
 sh scripts/package.sh   # dist/unisense.tar.gz + install.sh + SHA256SUMS
 ```
