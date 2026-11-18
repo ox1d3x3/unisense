@@ -152,7 +152,7 @@ def main():
             ctx.add_init_script(init + a.init)
             page = ctx.new_page()
             page.goto(f'{base}/{name}.html', wait_until='load')
-            page.wait_for_timeout(2500 if name in ('dashboard', 'networkmap') else 1200)
+            page.wait_for_timeout(2500 if name in ('dashboard', 'networkmap', 'trafficmap') else 1200)
             cdp = ctx.new_cdp_session(page)
             cdp.send('Performance.enable')
             if a.throttle > 1:
@@ -161,7 +161,7 @@ def main():
             return ctx, page, cdp
 
         # 1. scrolling long pages
-        for name in [n for n in ('dashboard', 'legacy', 'networkmap') if want('scroll:' + n)]:
+        for name in [n for n in ('dashboard', 'legacy', 'networkmap', 'trafficmap') if want('scroll:' + n)]:
             ctx, page, cdp = open_page(name)
             results[f'scroll:{name}'] = measure(page, cdp, browser=browser, action=lambda: (wheel(page, 2400), wheel(page, -2400)))
             ctx.close()
@@ -213,6 +213,12 @@ def main():
                     page.evaluate(f"() => window.UniSense && window.UniSense.setMode('{m}')")
                     page.wait_for_timeout(500)
             results['mode:switch'] = measure(page, cdp, browser=browser, action=switch_mode)
+            ctx.close()
+
+        # 7. Traffic Map: canvas flows + polls
+        if want('trafficmap:live'):
+            ctx, page, cdp = open_page('trafficmap')
+            results['trafficmap:live'] = measure(page, cdp, lambda: page.wait_for_timeout(10000), browser=browser)
             ctx.close()
 
         # 6. Network Map with live traffic (several polls) — nothing should move

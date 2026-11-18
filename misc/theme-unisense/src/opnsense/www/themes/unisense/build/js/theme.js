@@ -19,7 +19,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.0.2';   /* stamped from VERSION by scripts/build.mjs */
+    var VERSION = '1.1.0';   /* stamped from VERSION by scripts/build.mjs */
     var REPO_URL = 'https://github.com/ox1d3x3/unisense';
     var MODE_KEY = 'unisense.mode';
     var ACCENT_KEY = 'unisense.accent';
@@ -603,6 +603,33 @@
         }
     }
 
+    /* ------------------------------------------------- menu sections */
+    /*
+     * Bootstrap animates a section's height (350 ms) while the accordion
+     * closes the previous one: two panels resize at once and the whole menu
+     * slides under the pointer. Sections now open and close in one frame and
+     * only the newly shown items fade/slide in (opacity + transform: GPU).
+     */
+    function smoothMenu() {
+        var $ = window.jQuery;
+        if (!$ || !$.fn || !$.fn.collapse || !$.fn.collapse.Constructor) {
+            return;
+        }
+        $.fn.collapse.Constructor.TRANSITION_DURATION = 0;
+        $(document).on('show.bs.collapse', '#mainmenu .collapse', function (e) {
+            var panel = e.target;
+            if (panel !== this) {
+                return;
+            }
+            panel.classList.remove('us-sub-enter');
+            void panel.offsetWidth;   /* restart the animation when reopened quickly */
+            panel.classList.add('us-sub-enter');
+            setTimeout(function () {
+                panel.classList.remove('us-sub-enter');
+            }, 260);
+        });
+    }
+
     /* ----------------------------------------------------------- credit */
     function creditHtml() {
         return 'Author <a href="' + REPO_URL + '" target="_blank" rel="noopener">Ox1d3x3</a>' +
@@ -627,6 +654,18 @@
     /* ---------------------------------------------------- sign-in page */
     var SVG_EYE = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M1.8 10S4.8 4.2 10 4.2 18.2 10 18.2 10 15.2 15.8 10 15.8 1.8 10 1.8 10z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
     var SVG_EYE_OFF = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3l14 14M8.2 4.5A8.6 8.6 0 0 1 10 4.2c5.2 0 8.2 5.8 8.2 5.8a14 14 0 0 1-2.4 3.1M5.6 6A13.6 13.6 0 0 0 1.8 10S4.8 15.8 10 15.8c1.4 0 2.6-.4 3.7-1M8.3 8.4a2.6 2.6 0 0 0 3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    var SVG_USER = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.6 17c.9-3.2 3.4-5 6.4-5s5.5 1.8 6.4 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    var SVG_LOCK = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="8.6" width="12" height="8.4" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.8 8.6V6.4a3.2 3.2 0 0 1 6.4 0v2.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+    /* wrap an input with an inline-SVG icon (no data: URLs: the sign-in page's CSP blocks them) */
+    function fieldWrap(input, svg, extraClass) {
+        var wrap = el('div', { 'class': 'us-field' + (extraClass ? ' ' + extraClass : '') });
+        input.parentNode.insertBefore(wrap, input);
+        wrap.appendChild(el('span', { 'class': 'us-field-icon' }, svg));
+        wrap.appendChild(input);
+        return wrap;
+    }
 
     function enhanceLogin() {
         var card = document.querySelector('body.page-login .login-modal-container');
@@ -656,11 +695,13 @@
         }
 
         /* password: show/hide and Caps Lock hint */
+        var user = form.querySelector('#usernamefld');
+        if (user && user.parentNode) {
+            fieldWrap(user, SVG_USER);
+        }
         var pwd = form.querySelector('#passwordfld');
         if (pwd && pwd.parentNode) {
-            var wrap = el('div', { 'class': 'us-pwd' });
-            pwd.parentNode.insertBefore(wrap, pwd);
-            wrap.appendChild(pwd);
+            var wrap = fieldWrap(pwd, SVG_LOCK, 'us-pwd');
             var eye = el('button', { 'type': 'button', 'class': 'us-pwd-toggle', 'aria-label': 'Show password', 'tabindex': '3' }, SVG_EYE);
             wrap.appendChild(eye);
             eye.addEventListener('click', function () {
@@ -708,6 +749,7 @@
         } catch (e) { /* cosmetic only */ }
         try {
             mirrorRail();
+            smoothMenu();
             mountCredit();
             enhanceLogin();
         } catch (e) { /* cosmetic only */ }

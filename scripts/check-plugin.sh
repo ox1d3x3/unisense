@@ -27,7 +27,30 @@ done < /tmp/unisense-masks.txt
 if grep -nE '\{\{[^}]*\b(escape_js|url\(|static_url|assets)\b' "$TREE"/mvc/app/views/OPNsense/Unisense/*.volt; then
 	echo "✗ unsupported volt helper"; fail=1
 fi
-# the helper script must keep its shebang
-head -n 1 "$TREE/scripts/unisense/settheme.php" | grep -qx '#!/usr/local/bin/php' || { echo "✗ settheme.php shebang"; fail=1; }
+# helper scripts keep their shebangs (configd and the installer run them directly)
+for f in settheme.php setup_cron.php; do
+	head -n 1 "$TREE/scripts/unisense/$f" | grep -qx '#!/usr/local/bin/php' || { echo "✗ $f shebang"; fail=1; }
+done
+head -n 1 "$TREE/scripts/unisense/trafficmap.py" | grep -qx '#!/usr/local/bin/python3' || { echo "✗ trafficmap.py shebang"; fail=1; }
+python3 -m py_compile "$TREE/scripts/unisense/trafficmap.py" || { echo "✗ trafficmap.py syntax"; fail=1; }
+rm -rf "$TREE/scripts/unisense/__pycache__"
+# configd actions: every command must exist in the plugin, flows must stay quiet (no log line per poll)
+python3 - "$TREE" <<'PY' || fail=1
+import configparser, os, sys
+tree = sys.argv[1]
+c = configparser.ConfigParser(delimiters=(':',), interpolation=None)
+c.read(os.path.join(tree, 'service/conf/actions.d/actions_unisense.conf'))
+ok = True
+for sec in c.sections():
+    cmd = c[sec]['command'].split()[0]
+    rel = cmd.replace('/usr/local/opnsense/', '')
+    if not os.path.exists(os.path.join(tree, rel)):
+        print('✗ configd action %s: %s is not in the plugin' % (sec, cmd)); ok = False
+if 'message' in c['trafficmap.flows']:
+    print('✗ trafficmap.flows must not log a message (it runs every 3 s)'); ok = False
+if 'description' not in c['geoip.update']:
+    print('✗ geoip.update needs a description to be selectable in cron'); ok = False
+sys.exit(0 if ok else 1)
+PY
 [ "$fail" -eq 0 ] && echo "plugin checks: OK"
 exit "$fail"

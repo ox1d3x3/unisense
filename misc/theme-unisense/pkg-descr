@@ -11,8 +11,19 @@ It also adds Lobby: Network Map, a live topology of the internet, the
 firewall, its networks and every device, with per-device traffic and
 custom device names and icons.
 
+Lobby: Traffic Map shows which countries the network is talking to on a
+live world map, with the top 20 countries and the networks behind them.
+IP-to-country data (DB-IP Lite, iptoasn.com) is stored on the firewall and
+refreshed daily.
+
 Plugin Changelog
 ================
+
+1.1
+
+* Traffic Map: live traffic by country, top 20 countries, daily IP database
+* Network Map: animated data flow, device activity, no loopback card
+* Smoother menus, sign-in icons fixed under the legacy pages' CSP
 
 1.0
 

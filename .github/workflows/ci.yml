@@ -33,6 +33,10 @@ jobs:
           shellcheck -s sh install.sh scripts/package.sh scripts/check-plugin.sh tests/test-install.sh tests/test-real-php.sh
       - name: Installer tests
         run: sh tests/test-install.sh
+      - name: Traffic Map backend (databases, pf states, rates)
+        run: python3 tests/test-trafficmap.py
+      - name: World map data is current
+        run: node scripts/make-worldmap.mjs --check
       - name: Package
         run: sh scripts/package.sh
       - uses: actions/upload-artifact@v7

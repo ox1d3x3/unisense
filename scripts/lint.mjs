@@ -88,7 +88,8 @@ for (const file of readdirSync(cssDir).filter(f => f.endsWith('.css'))) {
     }
     for (const m of decl.value.matchAll(/url\((['"]?)([^'")]+)\1\)/g)) {
       const u = m[2];
-      if (u.startsWith('data:')) continue;
+      // legacy pages and the sign-in page send "default-src 'self'": data: images are blocked there
+      if (u.startsWith('data:')) { fail(file, `data: URL in ${sel} (blocked by OPNsense's Content-Security-Policy on legacy pages; ship a file)`); continue; }
       if (u.startsWith('/ui/themes/opnsense/') || u.startsWith('/ui/assets/') || u.startsWith('/ui/css/')) continue;
       const local = u.startsWith('/ui/themes/unisense/') ? join(theme, u.replace('/ui/themes/unisense/', '')) : join(cssDir, u);
       if (!existsSync(local.split(/[?#]/)[0])) fail(file, `missing url(${u}) in ${sel}`);
@@ -109,8 +110,10 @@ for (const file of readdirSync(cssDir).filter(f => f.endsWith('.css'))) {
 const pluginCss = join(root, 'misc/theme-unisense/src/opnsense/www/css');
 for (const dir of readdirSync(pluginCss, { withFileTypes: true }).filter(d => d.isDirectory())) {
   for (const file of readdirSync(join(pluginCss, dir.name)).filter(f => f.endsWith('.css'))) {
+    const text = readFileSync(join(pluginCss, dir.name, file), 'utf8');
+    if (/url\(\s*['"]?data:/.test(text)) fail(`${dir.name}/${file}`, 'data: URL (blocked by Content-Security-Policy on legacy pages)');
     try {
-      postcss.parse(readFileSync(join(pluginCss, dir.name, file), 'utf8'), { from: file });
+      postcss.parse(text, { from: file });
     } catch (e) {
       fail(`${dir.name}/${file}`, `parse error: ${e.message}`);
     }

@@ -40,6 +40,11 @@ RELEASES="${UNISENSE_RELEASES:-https://github.com/${REPO}/releases}"
 CODELOAD="${UNISENSE_CODELOAD:-https://codeload.github.com/${REPO}/tar.gz}"
 GH_API="${UNISENSE_GH_API:-https://api.github.com/repos/${REPO}}"
 SETTHEME="${BASE}/scripts/unisense/settheme.php"
+SETUPCRON="${BASE}/scripts/unisense/setup_cron.php"
+TRAFFICMAP="${BASE}/scripts/unisense/trafficmap.py"
+DB_DIR="${PREFIX}/var/db/unisense"
+CONFIGCTL="${UNISENSE_CONFIGCTL:-/usr/local/sbin/configctl}"
+SERVICE="${UNISENSE_SERVICE:-/usr/sbin/service}"
 MIGRATE="${BASE}/mvc/script/run_migrations.php"
 
 ACTION=""
@@ -160,6 +165,33 @@ refresh_gui() {
 	fi
 }
 
+backend_on() {
+	# configd must load actions_unisense.conf before the cron job can name it
+	if [ -x "$SERVICE" ]; then
+		"$SERVICE" configd restart >/dev/null 2>&1 || warn "could not restart configd (Traffic Map data needs: service configd restart)"
+	fi
+	if [ -x "$PHP" ] && [ -f "$SETUPCRON" ]; then
+		if out="$("$PHP" "$SETUPCRON" install 2>&1)"; then
+			[ -x "$CONFIGCTL" ] && "$CONFIGCTL" cron restart >/dev/null 2>&1
+			[ "$out" = "ok" ] && ok "Daily IP database update scheduled for 01:00 (System > Settings > Cron)"
+		else
+			warn "could not schedule the daily IP database update — add it in System > Settings > Cron"
+			printf '%s\n' "$out" | sed -n '1,4s/^/     /p' >&2
+		fi
+	fi
+	# first download in the background (about 40 MB on disk; takes a minute)
+	if [ ! -f "${DB_DIR}/meta.json" ] && [ -x "$CONFIGCTL" ]; then
+		"$CONFIGCTL" -dq unisense geoip update >/dev/null 2>&1 && \
+			ok "Downloading the IP-to-country databases in the background"
+	fi
+}
+
+backend_off() {
+	if [ -x "$PHP" ] && [ -f "$SETUPCRON" ]; then
+		"$PHP" "$SETUPCRON" remove >/dev/null 2>&1 && [ -x "$CONFIGCTL" ] && "$CONFIGCTL" cron restart >/dev/null 2>&1
+	fi
+}
+
 download() {
 	# download URL FILE
 	if [ -n "${GITHUB_TOKEN:-}" ]; then
@@ -227,7 +259,9 @@ validate_tree() {
 	    www/themes/unisense/build/images/default-logo.svg www/themes/unisense/build/images/favicon.png \
 	    www/themes/unisense/VERSION www/js/unisense/networkmap.js www/css/unisense/networkmap.css \
 	    mvc/app/models/OPNsense/Unisense/NetworkMap.xml mvc/app/views/OPNsense/Unisense/networkmap.volt \
-	    scripts/unisense/settheme.php; do
+	    scripts/unisense/settheme.php scripts/unisense/setup_cron.php scripts/unisense/trafficmap.py \
+	    service/conf/actions.d/actions_unisense.conf www/js/unisense/trafficmap.js www/js/unisense/worldmap.json \
+	    www/css/unisense/trafficmap.css www/css/unisense/flags/US.svg mvc/app/views/OPNsense/Unisense/trafficmap.volt; do
 		[ -s "$1/$f" ] || die "the download is incomplete ($f is missing)"
 	done
 }
@@ -344,6 +378,8 @@ do_install() {
 	find "${THEME_DIR}.new" -type f -exec chmod 644 {} +
 	while IFS= read -r f; do chmod 644 "${BASE}/$f"; done < "$list"
 	chmod 755 "$SETTHEME"
+	[ -f "$SETUPCRON" ] && chmod 755 "$SETUPCRON"
+	[ -f "$TRAFFICMAP" ] && chmod 755 "$TRAFFICMAP"
 
 	if [ -d "$THEME_DIR" ]; then
 		mv "$THEME_DIR" "${THEME_DIR}.old"
@@ -359,6 +395,7 @@ do_install() {
 		fi
 	fi
 	refresh_gui
+	backend_on
 
 	if [ -z "$old" ]; then
 		ok "UniSense $new installed"
@@ -367,7 +404,7 @@ do_install() {
 	else
 		ok "UniSense updated: $old -> $new"
 	fi
-	ok "Network Map added: Lobby > Network Map"
+	ok "Network Map and Traffic Map added: Lobby > Network Map, Lobby > Traffic Map"
 
 	if [ "$ACTIVATE" -eq 1 ]; then
 		if [ "$(current_theme)" = "unisense" ]; then
@@ -387,7 +424,7 @@ do_uninstall() {
 		ok "UniSense is not installed"
 		return 0
 	fi
-	confirm "Remove UniSense and its Network Map page?" || { say "Nothing changed."; return 0; }
+	confirm "Remove UniSense and its Network Map / Traffic Map pages?" || { say "Nothing changed."; return 0; }
 
 	if [ "$(current_theme)" = "unisense" ]; then
 		if set_theme opnsense; then
@@ -397,17 +434,20 @@ do_uninstall() {
 		fi
 	fi
 
+	backend_off
 	if [ -f "$MANIFEST" ]; then
 		while IFS= read -r f; do
 			case "$f" in ''|*..*|/*) continue ;; esac
 			rm -f "${BASE}/$f"
 		done < "$MANIFEST"
 	fi
+	rm -rf "$DB_DIR" "${PREFIX}/tmp/unisense-trafficmap.json"
+	[ -x "$SERVICE" ] && "$SERVICE" configd restart >/dev/null 2>&1
 	# remove the directories we created, if they are now empty
 	for d in mvc/app/views/OPNsense/Unisense mvc/app/models/OPNsense/Unisense/ACL \
 	    mvc/app/models/OPNsense/Unisense/Menu mvc/app/models/OPNsense/Unisense \
 	    mvc/app/controllers/OPNsense/Unisense/Api mvc/app/controllers/OPNsense/Unisense \
-	    www/js/unisense www/css/unisense scripts/unisense; do
+	    www/js/unisense www/css/unisense/flags www/css/unisense scripts/unisense; do
 		rmdir "${BASE}/$d" 2>/dev/null || true
 	done
 	rm -rf "$THEME_DIR" "${THEME_DIR}.new" "${THEME_DIR}.old"

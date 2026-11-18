@@ -60,6 +60,8 @@ def main():
                              'formGridDestination': get_form_grid(ctrl / 'Syslog/forms/dialogDestination.xml')}),
         'networkmap': dict(view='OPNsense/Unisense/networkmap', url='/ui/unisense/networkmap',
                            title='Lobby: Network Map', vars={}),
+        'trafficmap': dict(view='OPNsense/Unisense/trafficmap', url='/ui/unisense/trafficmap',
+                           title='Lobby: Traffic Map', vars={}),
         'monit': dict(view='OPNsense/Monit/index', url='/ui/monit', title='Services: Monit: Settings',
                       vars={'formGeneralSettings': get_form(ctrl / 'Monit/forms/general.xml'),
                             'formDialogEditAlert': get_form(ctrl / 'Monit/forms/alerts.xml'),

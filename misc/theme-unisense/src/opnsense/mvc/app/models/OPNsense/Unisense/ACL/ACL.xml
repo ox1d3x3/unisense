@@ -6,4 +6,11 @@
             <pattern>api/unisense/networkmap/*</pattern>
         </patterns>
     </page-unisense-networkmap>
+    <page-unisense-trafficmap>
+        <name>Lobby: Traffic Map</name>
+        <patterns>
+            <pattern>ui/unisense/trafficmap*</pattern>
+            <pattern>api/unisense/trafficmap/*</pattern>
+        </patterns>
+    </page-unisense-trafficmap>
 </acl>

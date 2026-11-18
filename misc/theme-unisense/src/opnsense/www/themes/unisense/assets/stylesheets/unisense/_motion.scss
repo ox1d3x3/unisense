@@ -15,11 +15,20 @@ $us-fast: .1s;
 $us-med:  .18s;
 $us-out:  cubic-bezier(.2, 0, 0, 1);   // quick start, soft landing
 
-// Bootstrap collapse (expanded menu sections, panels): 350ms -> 180ms.
-// Height animation is what Bootstrap's JS drives, so keep it short.
-.collapsing {
-  transition-duration: $us-med;
-  transition-timing-function: $us-out;
+// Bootstrap collapse (menu sections, panels): no height animation — theme.js
+// sets Collapse.TRANSITION_DURATION to 0, so sections open in one frame. In
+// the menu the newly shown items fade and slide in instead (GPU only).
+.collapsing { transition: none !important; }
+
+// expanded sidebar only: the collapsed rail's fly-out items carry the panel's
+// background, so fading them would make the fly-out see-through for a moment
+#navigation:not(.col-sidebar-left) #mainmenu .us-sub-enter > a,
+#navigation:not(.col-sidebar-left) #mainmenu .us-sub-enter > div > a {
+  animation: us-sub-in .2s $us-out both;
+}
+@keyframes us-sub-in {
+  from { opacity: 0; transform: translate3d(0, -4px, 0); }
+  to   { opacity: 1; transform: none; }
 }
 
 // buttons and inputs: colour only, short

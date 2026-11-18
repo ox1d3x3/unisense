@@ -118,7 +118,9 @@ MOCKS = {
          'media': 'Ethernet autoselect', 'addr4': '192.168.20.1/24', 'addr6': ''},
         {'identifier': 'opt2', 'description': 'GUEST', 'status': 'down', 'enabled': True, 'config': {}, 'device': 'igc1_vlan30',
          'macaddr': '00:0d:b9:aa:00:01', 'link_type': 'static', 'gateways': [], 'vlan_tag': 30,
-         'media': 'no carrier', 'addr4': '192.168.30.1/24', 'addr6': ''}]),
+         'media': 'no carrier', 'addr4': '192.168.30.1/24', 'addr6': ''},
+        {'identifier': 'lo0', 'description': 'Loopback', 'status': 'up', 'enabled': True, 'config': {}, 'device': 'lo0',
+         'macaddr': '', 'link_type': 'none', 'gateways': [], 'media': '', 'addr4': '127.0.0.1/8', 'addr6': '::1/128'}]),
     '/api/routes/gateway/status': {'status': 'ok', 'items': [
         {'name': 'WAN_DHCP', 'address': '100.64.12.1', 'status': 'none', 'status_translated': 'Online',
          'loss': '0.0 %', 'delay': '4.2 ms', 'stddev': '0.4 ms'},
@@ -241,6 +243,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def api(self):
         path = urlparse(self.path).path
+        if path.startswith('/api/unisense/trafficmap/'):
+            return self.trafficmap_api(path[len('/api/unisense/trafficmap/'):])
         if path.startswith('/api/unisense/networkmap/'):
             return self.labels_api(path[len('/api/unisense/networkmap/'):])
         if path in NOT_FOUND:
@@ -332,6 +336,78 @@ class Handler(SimpleHTTPRequestHandler):
         if p.startswith('/pages/'):
             return str(self.pages / p[7:])
         return str(self.pages / 'missing')
+
+    # OPNsense's real Content-Security-Policy headers. MVC pages
+    # (ControllerBase) allow data:/blob: images; legacy PHP pages and the
+    # sign-in page (guiconfig.inc) do not — "default-src 'self'" only.
+    CSP_MVC = ("default-src 'self' ;img-src 'self' data: blob: ;script-src 'self' 'unsafe-inline' 'unsafe-eval' ;"
+               "style-src 'self' 'unsafe-inline' 'unsafe-eval' ;")
+    CSP_LEGACY = ("default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                  "style-src 'self' 'unsafe-inline' 'unsafe-eval';")
+    LEGACY_PAGES = ('legacy.html', 'login.html')
+
+    def end_headers(self):
+        p = urlparse(self.path).path
+        if p.startswith('/pages/') and p.endswith('.html'):
+            legacy = p.rsplit('/', 1)[-1] in self.LEGACY_PAGES
+            self.send_header('Content-Security-Policy', self.CSP_LEGACY if legacy else self.CSP_MVC)
+        super().end_headers()
+
+    # ---- Traffic Map (scripts/unisense/trafficmap.py output) ----
+    TM_COUNTRIES = [
+        # cc, typical down/up (bit/s), connections, networks
+        ('US', 48e6, 3.1e6, 142, [(15169, 'GOOGLE'), (16509, 'AMAZON-02'), (2906, 'AS-SSI'), (8075, 'MICROSOFT-CORP-MSN-AS-BLOCK')]),
+        ('AU', 31e6, 1.2e6, 88, [(1221, 'ASN-TELSTRA Telstra Limited'), (13335, 'CLOUDFLARENET'), (4826, 'VOCUS-BACKBONE-AS')]),
+        ('SG', 12e6, 0.9e6, 41, [(16509, 'AMAZON-02'), (32590, 'VALVE-CORPORATION')]),
+        ('JP', 6.5e6, 0.4e6, 22, [(2516, 'KDDI KDDI CORPORATION'), (9370, 'SAKURA-B SAKURA Internet Inc.')]),
+        ('NL', 2.2e6, 0.6e6, 17, [(60781, 'LEASEWEB-NL-AMS-01'), (1136, 'KPN')]),
+        ('DE', 1.4e6, 0.3e6, 15, [(24940, 'HETZNER-AS'), (3320, 'DTAG Internet service provider operations')]),
+        ('GB', 0.9e6, 0.2e6, 11, [(5089, 'NTL Virgin Media Limited')]),
+        ('HK', 0.7e6, 0.1e6, 9, [(4515, 'ERX-STAR HKT PCCW-HKT DataCom Services')]),
+        ('IN', 0.4e6, 0.08e6, 6, [(55836, 'RELIANCEJIO-IN Reliance Jio Infocomm Limited')]),
+        ('FR', 0.25e6, 0.05e6, 5, [(16276, 'OVH')]),
+        ('BR', 0.12e6, 0.03e6, 4, [(28573, 'Claro NXT Telecomunicacoes Ltda')]),
+        ('CA', 0.09e6, 0.02e6, 3, [(812, 'ROGERS-COMMUNICATIONS')]),
+        ('KR', 0.05e6, 0.01e6, 2, [(4766, 'KIXS-AS-KR Korea Telecom')]),
+        ('NZ', 0.02e6, 0.004e6, 2, [(9500, 'VODAFONE-TRANSIT-AS-AP Vodafone NZ Ltd.')]),
+        ('ZA', 0, 0, 1, [(37100, 'SEACOM-AS')]),
+        ('??', 0.01e6, 0.002e6, 1, [(0, '')]),
+    ]
+    TM_TICK = [0]
+
+    def trafficmap_api(self, action):
+        if action == 'status':
+            return self._json({'ok': True, 'db': self.tm_db()})
+        if action == 'update':
+            return self._json({'status': 'started'})
+        if action != 'flows':
+            return self._json({'ok': False, 'error': 'unknown action'})
+        self.TM_TICK[0] += 1
+        first = self.TM_TICK[0] == 1
+        countries = []
+        tot = {'in_bps': 0, 'out_bps': 0, 'conns': 0, 'bytes_in': 0, 'bytes_out': 0}
+        for cc, dn, up, conns, nets in self.TM_COUNTRIES:
+            f = 0 if first else random.uniform(0.55, 1.45)
+            c = {'cc': cc, 'in_bps': int(dn * f), 'out_bps': int(up * f), 'conns': conns,
+                 'bytes_in': int(dn * 60), 'bytes_out': int(up * 60), 'asns': []}
+            for i, (asn, name) in enumerate(nets):
+                share = 0.6 / (i + 1)
+                c['asns'].append({'asn': asn, 'name': name, 'in_bps': int(c['in_bps'] * share),
+                                  'out_bps': int(c['out_bps'] * share), 'conns': max(1, conns // (i + 2)),
+                                  'bytes': int((dn + up) * 60 * share)})
+            countries.append(c)
+            for k in tot:
+                tot[k] += c[k]
+        countries.sort(key=lambda c: (c['in_bps'] + c['out_bps'], c['bytes_in'] + c['bytes_out']), reverse=True)
+        return self._json({'ok': True, 'ts': int(time.time()), 'interval': 0 if first else 3.0, 'home': 'AU',
+                           'db': self.tm_db(), 'totals': tot, 'countries': countries})
+
+    def tm_db(self):
+        if os.environ.get('UNISENSE_HARNESS_NODB'):
+            return {'ready': False, 'geo': None, 'asn': None, 'checked': None, 'errors': []}
+        now = int(time.time())
+        return {'ready': True, 'geo': {'month': time.strftime('%Y-%m'), 'updated': now - 86400 * 3, 'ranges': 812345},
+                'asn': {'updated': now - 3600 * 13, 'ranges': 498765}, 'checked': now - 3600 * 13, 'errors': []}
 
     def do_GET(self):
         if self.path.startswith('/api/'):

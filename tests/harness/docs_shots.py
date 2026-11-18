@@ -56,6 +56,8 @@ def main():
         shot(b, 'dashboard-dark', 'dashboard', 'dark', wait=4500)
         shot(b, 'dashboard-light', 'dashboard', 'light', wait=4500)
         shot(b, 'grid-light', 'cron', 'light')
+        shot(b, 'trafficmap-dark', 'trafficmap', 'dark', wait=6000)
+        shot(b, 'trafficmap-light', 'trafficmap', 'light', size=(1440, 1400), wait=6000)
         shot(b, 'networkmap-dark', 'networkmap', 'dark', wait=7000)
         shot(b, 'networkmap-light', 'networkmap', 'light', wait=7000)
         shot(b, 'networkmap-device', 'networkmap', 'light', wait=2500,

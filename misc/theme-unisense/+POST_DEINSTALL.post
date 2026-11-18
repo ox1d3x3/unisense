@@ -4,3 +4,7 @@ rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /var/lib/php/tmp/opnsense_acl_cac
 if [ -f /usr/local/opnsense/www/index.php ]; then
 	touch /usr/local/opnsense/www/index.php
 fi
+
+# Traffic Map: remove the IP databases (the cron job goes in +PRE_DEINSTALL)
+rm -rf /var/db/unisense /tmp/unisense-trafficmap.json
+service configd restart >/dev/null 2>&1 || true

@@ -53,6 +53,14 @@ That's it: the theme and the Network Map page are installed and the GUI switches
     <td align="center"><sub><b>Name any device and pick its icon</b></sub></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/screenshots/trafficmap-dark.png" alt="Traffic Map"></td>
+    <td width="50%"><img src="docs/screenshots/trafficmap-light.png" alt="Traffic Map, top 20 countries"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Traffic Map: live traffic by country</b></sub></td>
+    <td align="center"><sub><b>Top 20 countries and their networks</b></sub></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/screenshots/grid-light.png" alt="A data grid page"></td>
     <td width="50%"><img src="docs/screenshots/dialog-light.png" alt="An edit dialog"></td>
   </tr>
@@ -99,6 +107,13 @@ That's it: the theme and the Network Map page are installed and the GUI switches
 - Live per-device download/upload rates, network totals, search, per-network filters, hide offline devices
 - Click a device to give it a name and an icon — stored in the OPNsense configuration, so every browser and admin sees it (and it is included in backups)
 - Icons are guessed automatically (phones, laptops, TVs, consoles, cameras, NAS, access points, smart-home…)
+- Live data flow: dots stream along every link at a speed that follows the traffic, and busy devices ripple
+
+**Traffic Map** (Lobby → Traffic Map)
+- World map of where your traffic goes right now: countries shaded by traffic, animated arcs from your firewall (download towards you, upload away)
+- Top 20 countries with live download/upload, share, connections, data transferred and the networks (e.g. GOOGLE, AMAZON-02) behind them
+- Hover a country for details, click a row for its top networks, pause/resume
+- IP-to-country data is downloaded to the firewall and refreshed daily at 01:00 — lookups never leave your network
 
 **Coverage**
 - Every MVC page: forms, tabs, data grids (Tabulator), edit dialogs, dropdowns, tooltips, popovers, the status dialog
@@ -187,6 +202,28 @@ Access is a normal privilege, **Lobby: Network Map**, so you can grant it to oth
 
 ---
 
+## Traffic Map
+
+**Lobby → Traffic Map** shows which countries your network is talking to, live.
+
+- **Map:** every country your firewall has connections with is shaded by how much traffic it carries; arcs run from your firewall's country to the busiest ones, with dots flowing in (download) and out (upload) at a speed that follows the traffic. Hover a country for its rates, connections and networks.
+- **Top 20 countries:** download and upload now, share of all traffic, open connections, data transferred over those connections, and the networks (autonomous systems) behind them. Click a row for its top five networks.
+
+**Where the data comes from.** The page reads the firewall's state table (`pfctl`), the same connections *Firewall → Diagnostics → States* lists, and merges the LAN and NAT copies of each connection. Rates are the change in byte counters between two reads (every 3 seconds while the page is open; nothing runs in the background otherwise).
+
+**IP databases.** Two free databases are stored on the firewall in `/var/db/unisense` (about 40 MB) and looked up locally — no address is ever sent to a web service:
+
+| Database | What it gives | Licence | Refreshed |
+|---|---|---|---|
+| [DB-IP IP to Country Lite](https://db-ip.com/db/download/ip-to-country-lite) | the country an address is **located** in | CC BY 4.0 | monthly release |
+| [iptoasn.com](https://iptoasn.com) `ip2asn-combined` | the **network** (AS number and organisation), and its registration country as a fallback | public domain | daily |
+
+The installer downloads them once and adds a cron job, **UniSense: update IP-to-country databases**, that runs daily at **01:00** (change the time in *System → Settings → Cron*). *Update now* on the page refreshes them on demand.
+
+Access is a separate privilege, **Lobby: Traffic Map**.
+
+---
+
 ## Using the theme
 
 1. The installer selects the theme for you. To switch by hand: **System → Settings → General → Theme** → **unisense** → **Save**.
@@ -200,7 +237,7 @@ Each browser keeps its own choice. To reset it, choose **System** and **Blue**, 
 fetch -o - https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh | sh -s -- --uninstall
 ```
 
-The GUI is switched back to the default **opnsense** theme first, then every UniSense file is removed. Device names stay in the configuration, so a reinstall picks them up again.
+The GUI is switched back to the default **opnsense** theme first, then every UniSense file, the IP databases and the daily update job are removed. Device names stay in the configuration, so a reinstall picks them up again.
 
 ---
 
@@ -240,6 +277,18 @@ Dashboard gauges and the CPU graph follow your accent colour. Multi-series chart
 <summary><b>The Network Map shows a device in the wrong place or without a name.</b></summary>
 
 Devices are grouped by the interface they were seen on (ARP) or, for DHCP-only devices, by their lease. Names come from DHCP leases; devices with a static IP and no lease show their vendor or IP — click them to give them a name. Devices that are only reachable through another router (e.g. behind a mesh in router mode) cannot be seen by the firewall and are not listed.
+</details>
+
+<details>
+<summary><b>Why does the Traffic Map show my own country so high?</b></summary>
+
+Big services (Netflix, YouTube, Cloudflare, game and update servers) answer from caches close to you, often inside your ISP. The Traffic Map shows where the server you are talking to **is**, so that traffic counts for your own country — which is correct, even if the company is American.
+</details>
+
+<details>
+<summary><b>The Traffic Map says the database is missing.</b></summary>
+
+The first download runs in the background after installing and takes about a minute. If the firewall could not reach `iptoasn.com` or `download.db-ip.com` then, click **Download now**, or run `configctl unisense geoip update` in a shell. Errors are shown under *IP database* on the page and in the system log.
 </details>
 
 <details>
@@ -310,6 +359,8 @@ Release notes are on the [Releases](https://github.com/ox1d3x3/unisense/releases
 <div align="center">
 
 Made by [ox1d3x3](https://github.com/ox1d3x3) · Licensed under [BSD 2-Clause](./LICENSE) · Sibling of [UniWRT](https://github.com/ox1d3x3/uniwrt-luci) for OpenWrt
+
+Traffic Map: IP to Country Lite by [DB-IP](https://db-ip.com) (CC BY 4.0) · networks by [iptoasn.com](https://iptoasn.com) · map data [Natural Earth](https://www.naturalearthdata.com) · flags [FlagKit](https://github.com/madebybowtie/FlagKit) (MIT) — see [THIRD-PARTY.md](./THIRD-PARTY.md)
 
 UniSense is an independent project and is not affiliated with or endorsed by Deciso B.V., the OPNsense project or Ubiquiti Inc.
 

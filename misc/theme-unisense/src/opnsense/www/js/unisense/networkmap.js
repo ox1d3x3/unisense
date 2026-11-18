@@ -290,6 +290,10 @@
                     identifier: String(r.identifier),
                     vlan: r.vlan_tag || null
                 };
+                /* loopback (lo0, 127.0.0.1) never has clients: leave it off the map */
+                if (/^lo\d*$/.test(ifc.device) || /^127\./.test(ifc.addr4)) {
+                    return;
+                }
                 ifc.uplink = isUplink(ifc);
                 ifaces.push(ifc);
                 if (ifc.device) {
@@ -510,6 +514,7 @@
             }
             var r = deviceRate(d);
             setHtml(slot, S.live ? rateHtml(r, true) : '');
+            el.classList.toggle('is-active', !!S.live && d.online && (r.in + r.out) > 16000);
         });
         Object.keys(S.devices).forEach(function (mac) {
             var r = deviceRate(S.devices[mac]);
@@ -520,19 +525,25 @@
         if (tot) {
             setHtml(tot, S.live ? (esc(fmtBits(total.in)) + ' <small>/</small> ' + esc(fmtBits(total.out))) : '&mdash;');
         }
-        root.querySelectorAll('[data-usn-net-rate]').forEach(function (el) {
-            var id = el.getAttribute('data-usn-net-rate');
-            var r = { in: 0, out: 0 };
-            Object.keys(S.devices).forEach(function (mac) {
-                var d = S.devices[mac];
-                if (d.ifid === id) {
-                    var x = deviceRate(d);
-                    r.in += x.in;
-                    r.out += x.out;
-                }
-            });
-            setHtml(el, S.live ? rateHtml(r) : '');
+        var perNet = {};
+        var other = { in: 0, out: 0 };
+        var lan = {};
+        S.interfaces.forEach(function (i) {
+            if (!i.uplink) {
+                lan[i.id] = true;
+            }
         });
+        Object.keys(S.devices).forEach(function (mac) {
+            var d = S.devices[mac];
+            var x = deviceRate(d);
+            var bucket = lan[d.ifid] ? (perNet[d.ifid] = perNet[d.ifid] || { in: 0, out: 0 }) : other;
+            bucket.in += x.in;
+            bucket.out += x.out;
+        });
+        root.querySelectorAll('[data-usn-net-rate]').forEach(function (el) {
+            setHtml(el, S.live ? rateHtml(perNet[el.getAttribute('data-usn-net-rate')] || { in: 0, out: 0 }) : '');
+        });
+        updateFlows(total, perNet, other);
         root.classList.toggle('usn-live', !!S.live);
     }
 
@@ -692,12 +703,90 @@
             '<div class="usn-stat-value">' + value + '</div><div class="usn-stat-sub">' + (sub || '&nbsp;') + '</div></div></div>';
     }
 
+    /*
+     * A connector with two lanes of moving dots: download flows down, upload
+     * flows up. The lanes are animated with the Web Animations API on
+     * transform only (composited on the GPU); the traffic rate sets the speed
+     * through updatePlaybackRate(), so speed changes never make the dots jump.
+     */
+    function wire(key, cls) {
+        return '<span class="usn-wire' + (cls ? ' ' + cls : '') + '" data-usn-wire="' + esc(key) + '" aria-hidden="true">' +
+            '<i class="usn-lane usn-lane-down"></i><i class="usn-lane usn-lane-up"></i></span>';
+    }
+
+    var FLOW_PERIOD = 14;   /* px between dots — must match the CSS gradient */
+
+    function flowSpeed(bps) {
+        if (!(bps > 8000)) {
+            return 0;
+        }
+        /* 10 kbit/s ~0.75x, 1 Mbit/s ~2.25x, 100 Mbit/s ~3.75x */
+        return Math.max(0.5, Math.min(4, Math.log10(bps / 1000) * 0.75));
+    }
+
+    /* dir: 'down' | 'up' | 'left' | 'right' — the direction the dots travel */
+    function driveLane(lane, bps, dir) {
+        var speed = S.live ? flowSpeed(bps) : 0;
+        lane.classList.toggle('is-on', speed > 0);
+        if (reduceMotion() || typeof lane.animate !== 'function') {
+            return;
+        }
+        if (!lane.__usnAnim) {
+            var p = FLOW_PERIOD;
+            var v = { down: [0, -p, 0, 0], up: [0, 0, 0, -p], right: [-p, 0, 0, 0], left: [0, 0, -p, 0] }[dir];
+            var from = 'translate3d(' + v[0] + 'px,' + v[1] + 'px,0)';
+            var to = 'translate3d(' + v[2] + 'px,' + v[3] + 'px,0)';
+            lane.__usnAnim = lane.animate([{ transform: from }, { transform: to }], { duration: 700, iterations: Infinity });
+            lane.__usnAnim.pause();
+        }
+        var a = lane.__usnAnim;
+        if (speed > 0) {
+            if (typeof a.updatePlaybackRate === 'function') {
+                a.updatePlaybackRate(speed);
+            } else {
+                a.playbackRate = speed;
+            }
+            if (a.playState !== 'running') {
+                a.play();
+            }
+        } else if (a.playState === 'running') {
+            a.pause();
+        }
+    }
+
+    function reduceMotion() {
+        try {
+            return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function updateFlows(total, perNet, other) {
+        root.querySelectorAll('[data-usn-wire]').forEach(function (w) {
+            var key = w.getAttribute('data-usn-wire');
+            var r = key === 'other' ? other : (key.indexOf('net:') === 0 ? (perNet[key.slice(4)] || { in: 0, out: 0 }) : total);
+            var lanes = w.children;
+            if (lanes.length === 2) {
+                driveLane(lanes[0], r.in, 'down');
+                driveLane(lanes[1], r.out, 'up');
+            }
+        });
+        /* the bus: downloads travel out from the firewall, uploads back in */
+        root.querySelectorAll('[data-usn-bus] > [data-side]').forEach(function (half) {
+            var left = half.getAttribute('data-side') === 'left';
+            driveLane(half.children[0], total.in, left ? 'left' : 'right');
+            driveLane(half.children[1], total.out, left ? 'right' : 'left');
+        });
+    }
+
     function tile(d) {
         var k = iconKey(d);
         var meta = [d.ips[0] || '', d.vendor || ''].filter(Boolean).map(esc).join(' · ');
         return '<div class="usn-tile' + (d.online ? '' : ' is-offline') + '" data-mac="' + esc(d.mac) + '" role="button" tabindex="0"' +
             ' title="' + esc(label(d)) + '">' +
             '<span class="usn-tile-icon"><i class="fa ' + ICONS[k] + '" aria-hidden="true"></i>' +
+            (d.online ? '<span class="usn-ripple" aria-hidden="true"></span>' : '') +
             '<span class="usn-dot ' + (d.online ? 'is-on' : '') + '" aria-label="' + esc(d.online ? t('online', 'Online') : t('offline', 'Offline')) + '"></span></span>' +
             '<span class="usn-tile-text"><span class="usn-tile-name">' + esc(label(d)) + '</span>' +
             '<span class="usn-tile-meta">' + (meta || esc(d.mac)) + '</span></span>' +
@@ -731,7 +820,7 @@
             }).join('') + '</span>';
         }
         html += '</span></div>';
-        html += '<div class="usn-link" aria-hidden="true"></div>';
+        html += '<div class="usn-link">' + wire('wan') + '</div>';
         html += '<div class="usn-node usn-node-fw"><span class="usn-node-icon"><i class="fa fa-shield-halved" aria-hidden="true"></i></span>' +
             '<span class="usn-node-text"><b>' + esc(host) + '</b><small>' + esc(ver || t('firewall', 'Firewall')) + '</small>';
         if (uplinks.length) {
@@ -754,7 +843,10 @@
         });
         var unassigned = macs.filter(function (m) { return !lanSet[S.devices[m].ifid]; });
 
-        html += '<div class="usn-link usn-link-down" aria-hidden="true"></div><div class="usn-nets">';
+        html += '<div class="usn-link usn-link-down">' + wire('lan') + '</div><div class="usn-nets">' +
+            '<div class="usn-bus" data-usn-bus aria-hidden="true">' +
+            '<span class="usn-bus-half is-left" data-side="left"><i class="usn-lane usn-lane-x usn-lane-dl"></i><i class="usn-lane usn-lane-x usn-lane-ul"></i></span>' +
+            '<span class="usn-bus-half is-right" data-side="right"><i class="usn-lane usn-lane-x usn-lane-dl"></i><i class="usn-lane usn-lane-x usn-lane-ul"></i></span></div>';
         var shown = 0;
         nets.forEach(function (n) {
             var list = macs.filter(function (m) { return S.devices[m].ifid === n.id; }).map(function (m) { return S.devices[m]; });
@@ -766,7 +858,7 @@
             });
             shown += list.length;
             var online = list.filter(function (d) { return d.online; }).length;
-            html += '<section class="usn-net' + (n.status === 'up' ? '' : ' is-down') + '">' +
+            html += '<section class="usn-net' + (n.status === 'up' ? '' : ' is-down') + '">' + wire('net:' + n.id, 'usn-wire-net') +
                 '<header class="usn-net-head"><span class="usn-net-icon"><i class="fa fa-network-wired" aria-hidden="true"></i></span>' +
                 '<span class="usn-net-title"><b>' + esc(n.name) + '</b><small>' + esc(n.addr4 || n.addr6 || n.device) +
                 (n.vlan ? ' · VLAN ' + esc(n.vlan) : '') + '</small></span>' +
@@ -781,7 +873,7 @@
         });
         if (unassigned.length && S.filter === 'all') {
             shown += unassigned.length;
-            html += '<section class="usn-net"><header class="usn-net-head"><span class="usn-net-icon"><i class="fa fa-ethernet" aria-hidden="true"></i></span>' +
+            html += '<section class="usn-net">' + wire('other', 'usn-wire-net') + '<header class="usn-net-head"><span class="usn-net-icon"><i class="fa fa-ethernet" aria-hidden="true"></i></span>' +
                 '<span class="usn-net-title"><b>' + esc(t('upstream', 'Other')) + '</b><small>&nbsp;</small></span></header>' +
                 '<div class="usn-tiles">' + unassigned.map(function (m) { return tile(S.devices[m]); }).join('') + '</div></section>';
         }

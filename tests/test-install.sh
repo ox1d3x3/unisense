@@ -33,11 +33,19 @@ case "$1" in
 	[ -d "$UNISENSE_PREFIX/usr/local/opnsense/www/themes/$2" ] || { echo "theme not found: $2" >&2; exit 1; }
 	sed -i "s:<theme>[^<]*</theme>:<theme>$2</theme>:" "$cfg"; echo ok ;;
 *run_migrations.php) echo "migrate $2" >> "$UNISENSE_PREFIX/migrations.log" ;;
+*setup_cron.php)
+	case "${2:-}" in
+	install) if grep -q unisense-cron "$cfg"; then echo exists; else sed -i "s:</opnsense>:<unisense-cron/></opnsense>:" "$cfg"; echo ok; fi ;;
+	remove) sed -i "s:<unisense-cron/>::" "$cfg"; echo ok ;;
+	esac ;;
 *) exit 1 ;;
 esac
 SHIM
 	chmod +x "$W/php"
-	export UNISENSE_PREFIX="$R" UNISENSE_PHP="$W/php"
+	printf '#!/bin/sh\necho "$(basename "$0") $*" >> "%s/calls"\n' "$R" > "$W/service"
+	cp "$W/service" "$W/configctl"
+	chmod +x "$W/service" "$W/configctl"
+	export UNISENSE_PREFIX="$R" UNISENSE_PHP="$W/php" UNISENSE_SERVICE="$W/service" UNISENSE_CONFIGCTL="$W/configctl"
 	B="$R/usr/local/opnsense"
 }
 theme() { sed -n 's:.*<theme>\([^<]*\)</theme>.*:\1:p' "$R/conf/config.xml"; }
@@ -56,6 +64,10 @@ t "theme activated" '[ "$(theme)" = unisense ]'
 t "menu and acl caches cleared" '[ ! -e "$R/var/lib/php/tmp/opnsense_menu_cache.xml" ] && [ ! -e "$R/var/lib/php/tmp/opnsense_acl_cache.json" ]'
 t "asset cache key refreshed" '[ "$B/www/index.php" -nt "$R/conf/config.xml" ] || [ "$(find "$B/www/index.php" -newermt 2021-01-01 | wc -l)" -eq 1 ]'
 t "model migration ran" 'grep -q "migrate OPNsense/Unisense" "$R/migrations.log"'
+t "traffic map installed (page, api, backend, flags)" '[ -s "$B/mvc/app/views/OPNsense/Unisense/trafficmap.volt" ] && [ -s "$B/mvc/app/controllers/OPNsense/Unisense/Api/TrafficmapController.php" ] && [ -x "$B/scripts/unisense/trafficmap.py" ] && [ -s "$B/www/css/unisense/flags/AU.svg" ] && [ -s "$B/www/js/unisense/worldmap.json" ]'
+t "configd actions installed and configd restarted" '[ -s "$B/service/conf/actions.d/actions_unisense.conf" ] && grep -q "service configd restart" "$R/calls"'
+t "daily update scheduled, crontab reloaded" 'grep -q unisense-cron "$R/conf/config.xml" && grep -q "configctl cron restart" "$R/calls"'
+t "first database download started" 'grep -q "configctl -dq unisense geoip update" "$R/calls"'
 t "core files untouched" '[ "$(cat "$B/mvc/app/models/OPNsense/Core/Core.xml")" = core ] && [ -d "$B/www/themes/opnsense" ]'
 t "no staging leftovers" '[ ! -e "$B/www/themes/unisense.new" ] && [ ! -e "$B/www/themes/unisense.old" ] && [ -z "$(find "$B" -name "*.unisense-new")" ]'
 t "status reports version" 'sh install.sh --status | grep -q "Installed:    $(cat misc/theme-unisense/src/opnsense/www/themes/unisense/VERSION)"'
@@ -73,11 +85,14 @@ t "--no-activate leaves the theme alone" '[ "$(theme)" = opnsense ]'
 
 echo "uninstall"
 sh install.sh --local . >/dev/null
+mkdir -p "$R/var/db/unisense" && echo "{}" > "$R/var/db/unisense/meta.json"
 sh install.sh --uninstall --yes >/dev/null
 t "theme switched back to opnsense" '[ "$(theme)" = opnsense ]'
 t "theme removed" '[ ! -e "$B/www/themes/unisense" ]'
 t "plugin files removed" '[ -z "$(find "$B" -path "*nisense*")" ]'
 t "core files still there" '[ -d "$B/www/themes/opnsense" ] && [ -s "$B/mvc/app/models/OPNsense/Core/Core.xml" ] && [ -f "$B/www/index.php" ]'
+t "daily update job removed" '! grep -q unisense-cron "$R/conf/config.xml"'
+t "IP databases removed" '[ ! -e "$R/var/db/unisense" ]'
 t "uninstall twice is harmless" 'sh install.sh --uninstall --yes >/dev/null'
 rm -rf "$W"
 

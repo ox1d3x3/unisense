@@ -1,0 +1,5 @@
+# Traffic Map: remove the daily IP database update job while its helper still exists
+if [ -x /usr/local/opnsense/scripts/unisense/setup_cron.php ]; then
+	/usr/local/opnsense/scripts/unisense/setup_cron.php remove >/dev/null 2>&1 && configctl cron restart >/dev/null 2>&1
+fi
+true

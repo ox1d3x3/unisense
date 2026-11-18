@@ -157,6 +157,10 @@ td {
     /* ChartJS v4 workaround: https://github.com/chartjs/Chart.js/issues/11005 */
     width: 100% !important;
     height: 100% !important;
+    /* core's gauge text is sized in em (height / 60 em): em resolves against
+       the canvas' own font size, so pin it — the theme's larger body text
+       made the two centre lines overlap */
+    font-size: 11px;
 }
 
 .cpu-canvas-container {

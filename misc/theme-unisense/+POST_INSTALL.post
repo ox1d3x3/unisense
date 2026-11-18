@@ -4,3 +4,11 @@ rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /var/lib/php/tmp/opnsense_acl_cac
 if [ -f /usr/local/opnsense/www/index.php ]; then
 	touch /usr/local/opnsense/www/index.php
 fi
+
+# Traffic Map: load the configd actions, schedule the daily IP database update
+# (01:00) and fetch the databases once in the background
+service configd restart >/dev/null 2>&1 || true
+if /usr/local/opnsense/scripts/unisense/setup_cron.php install >/dev/null 2>&1; then
+	configctl cron restart >/dev/null 2>&1 || true
+fi
+[ -f /var/db/unisense/meta.json ] || configctl -dq unisense geoip update >/dev/null 2>&1 || true

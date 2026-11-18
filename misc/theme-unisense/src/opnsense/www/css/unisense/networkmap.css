@@ -213,11 +213,105 @@
 .usn-wan small { color: var(--usn-text-3); font-weight: 400; }
 
 .usn-link {
+  position: relative;
+  width: 10px;
+  height: 34px;
+}
+.usn-link-down { height: 30px; margin: 0 auto; }
+
+/* ---------------------------------------------------- live data-flow wires
+   A static connector plus two lanes of dots: download (accent) flows away
+   from the Internet, upload (green) flows towards it. Lanes are real elements
+   moved with transform by the Web Animations API (networkmap.js), so the GPU
+   composites them; the traffic rate sets the speed via updatePlaybackRate().
+   One dot every 14px — FLOW_PERIOD in networkmap.js. */
+.usn-wire {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 10px;
+  margin-left: -5px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.usn-wire::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
   width: 2px;
-  height: 22px;
   background: var(--usn-line);
 }
-.usn-link-down { margin: 0 auto; }
+.usn-lane {
+  position: absolute;
+  top: -14px;                   /* one period of overhang for a seamless loop */
+  bottom: -14px;
+  width: 4px;
+  opacity: 0;
+  transition: opacity .3s linear;
+  will-change: transform;
+}
+.usn-lane-down {
+  left: 0;
+  background: radial-gradient(circle at 50% 50%, var(--usn-accent) 0 1.8px, transparent 2.2px) 0 0 / 4px 14px repeat-y;
+}
+.usn-lane-up {
+  left: 6px;
+  background: radial-gradient(circle at 50% 50%, var(--usn-ok) 0 1.8px, transparent 2.2px) 0 0 / 4px 14px repeat-y;
+}
+.usn-lane.is-on { opacity: 1; }
+.usn-wire-net {                 /* bus -> network card */
+  top: -26px;
+  bottom: auto;
+  left: 34px;
+  height: 25px;
+}
+
+/* the horizontal bus above the networks, split at the firewall */
+.usn-bus {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  pointer-events: none;
+}
+.usn-bus::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--usn-line);
+}
+.usn-bus-half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  overflow: hidden;
+}
+.usn-bus-half.is-left { left: 0; }
+.usn-bus-half.is-right { right: 0; }
+.usn-lane-x {
+  top: auto;
+  bottom: auto;
+  left: -14px;
+  right: -14px;
+  width: auto;
+  height: 4px;
+}
+.usn-lane-dl {
+  top: 0;
+  background: radial-gradient(circle at 50% 50%, var(--usn-accent) 0 1.8px, transparent 2.2px) 0 0 / 14px 4px repeat-x;
+}
+.usn-lane-ul {
+  top: 6px;
+  background: radial-gradient(circle at 50% 50%, var(--usn-ok) 0 1.8px, transparent 2.2px) 0 0 / 14px 4px repeat-x;
+}
 
 /* --------------------------------------------------------------- networks */
 .usn-nets {
@@ -226,8 +320,7 @@
   align-items: start;
   gap: 16px;
   position: relative;
-  padding-top: 18px;
-  border-top: 2px solid var(--usn-line);
+  padding-top: 26px;
 }
 
 .usn-net {
@@ -238,15 +331,7 @@
   background: var(--usn-surface);
   box-shadow: var(--usn-shadow);
 }
-.usn-net::before {
-  content: "";
-  position: absolute;
-  top: -20px;
-  left: 34px;
-  width: 2px;
-  height: 19px;
-  background: var(--usn-line);
-}
+
 .usn-net.is-down { opacity: .7; }
 
 .usn-net-head {
@@ -313,6 +398,27 @@
   background: var(--usn-surface-3);
   color: var(--usn-text-2);
   font-size: 15px;
+}
+.usn-ripple {                  /* activity ring around the status dot */
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--usn-ok, #38cc65);
+  opacity: 0;
+  pointer-events: none;
+}
+.usn-live .usn-tile.is-active .usn-ripple {
+  animation: usn-ripple 1.8s cubic-bezier(.2, 0, 0, 1) infinite;
+}
+@keyframes usn-ripple {
+  0%   { opacity: .55; transform: scale(.6); }
+  100% { opacity: 0;   transform: scale(2.4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .usn-live .usn-tile.is-active .usn-ripple { animation: none; opacity: .35; }
 }
 .usn-tile-icon .usn-dot {
   position: absolute;

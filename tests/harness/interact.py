@@ -125,6 +125,15 @@ def main():
             heights |= set(pg.evaluate("[...document.querySelectorAll('.usn-tile:not(.is-offline)')].map(t => Math.round(t.getBoundingClientRect().height))"))
             pg.wait_for_timeout(4300)
         check(len(heights) == 1, f'tiles keep one height while traffic comes and goes ({sorted(heights)})')
+        check(pg.locator('.usn-net', has_text='Loopback').count() == 0 and pg.locator('button[data-filter="lo0"]').count() == 0,
+              'loopback is not shown')
+        lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane.is-on')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
+        check(lanes >= 4, f'live data flow runs on the links ({lanes} lanes)')
+        check(pg.locator('.usn-tile.is-active .usn-ripple').count() >= 1, 'busy devices ripple')
+        pg.uncheck('[data-usn="live"]'); pg.wait_for_timeout(200)
+        lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
+        check(lanes == 0 and pg.locator('.usn-lane.is-on').count() == 0, 'data flow stops with live traffic off')
+        pg.check('[data-usn="live"]'); pg.wait_for_timeout(4500)
         check(pg.locator('#mainmenu a[href="/ui/unisense/networkmap"].active').count() == 1, 'menu entry is highlighted')
         pg.fill('[data-usn="query"]', 'pixel'); pg.wait_for_timeout(150)
         check(pg.locator('.usn-tile').count() == 1, 'search narrows the list')
@@ -168,6 +177,60 @@ def main():
         check(box is not None and box['x'] >= 0 and box['x'] + box['width'] <= 390, 'menu fits the phone screen')
         check(not errs, 'no console errors: ' + '; '.join(errs))
         ctx.close()
+
+        # -------------------------------------------------------- traffic map
+        print('traffic map')
+        ctx = b.new_context(viewport={'width': 1440, 'height': 1000})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        posts = []
+        pg.on('request', lambda r: r.method == 'POST' and posts.append((r.url, r.headers.get('x-csrftoken'))))
+        pg.goto(f'{base}/trafficmap.html'); pg.wait_for_timeout(5000)
+        check(pg.locator('.utm-row').count() == 16, f'top countries listed ({pg.locator(".utm-row").count()})')
+        check(pg.locator('.utm-svg path[data-cc]').count() > 200, 'world map drawn')
+        check(pg.locator('.utm-svg path[data-cc="US"]').get_attribute('data-l') not in (None, '0'), 'countries with traffic are shaded')
+        check(pg.locator('.utm-svg path.is-home[data-cc="AU"]').count() == 1, 'home country marked')
+        check(pg.evaluate("Object.keys(window.UniSenseTrafficMap.state.flows).length") >= 10, 'arcs to the busiest countries')
+        check(pg.locator('img.utm-flag').count() >= 14 and pg.locator('img.utm-flag.is-missing').count() == 0, 'flags load')
+        check('Unknown' in pg.inner_text('.utm-table') and 'AS0' not in pg.inner_text('.utm-table'), 'unknown country without a fake network')
+        box = pg.locator('[data-utm="mapbox"]').bounding_box()
+        # the country's anchor point (mainland centroid) on screen
+        pt = pg.evaluate("""() => { const svg = document.querySelector('.utm-svg');
+            const c = window.UniSenseTrafficMap.state.world.byCc.US.c;
+            const p = new DOMPoint(c[0], c[1]).matrixTransform(svg.getScreenCTM()); return [p.x, p.y]; }""")
+        pg.mouse.move(pt[0], pt[1]); pg.wait_for_timeout(200)
+        check(pg.is_visible('[data-utm="tip"]') and 'United States' in pg.inner_text('[data-utm="tip"]'), 'tooltip on hover')
+        tip = pg.locator('[data-utm="tip"]').bounding_box() or {'x': -1, 'width': 0}
+        check(tip['x'] >= box['x'] and tip['x'] + tip['width'] <= box['x'] + box['width'] + 1, 'tooltip stays inside the map')
+        check(pg.locator('.utm-row.is-hover[data-cc="US"]').count() == 1, 'hovering the map highlights the table row')
+        pg.mouse.move(5, 5)
+        pg.click('.utm-row[data-cc="SG"]'); pg.wait_for_timeout(150)
+        check(pg.locator('.utm-detail .utm-net').count() >= 1 and 'AMAZON-02' in pg.inner_text('.utm-detail'), 'a row opens its networks')
+        pg.wait_for_timeout(3500)
+        check(pg.locator('.utm-detail').count() == 1, 'the open row survives a refresh')
+        pg.click('[data-utm="pause"]'); pg.wait_for_timeout(100)
+        check('Paused' in pg.inner_text('[data-utm="status"]'), 'pause')
+        n = pg.evaluate("performance.getEntriesByType('resource').filter(e => e.name.includes('/trafficmap/flows')).length")
+        pg.wait_for_timeout(4000)
+        n2 = pg.evaluate("performance.getEntriesByType('resource').filter(e => e.name.includes('/trafficmap/flows')).length")
+        check(n2 == n, f'no polling while paused ({n} -> {n2})')
+        pg.click('[data-utm="pause"]'); pg.wait_for_timeout(1500)
+        check('Live' in pg.inner_text('[data-utm="status"]'), 'resume')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
+        os.environ['UNISENSE_HARNESS_NODB'] = '1'
+        ctx = b.new_context(viewport={'width': 1440, 'height': 1000})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        posts = []
+        pg.on('request', lambda r: r.method == 'POST' and posts.append((r.url, r.headers.get('x-csrftoken'))))
+        pg.goto(f'{base}/trafficmap.html'); pg.wait_for_timeout(2500)
+        check(pg.is_visible('[data-utm="banner"]') and 'not been downloaded' in pg.inner_text('[data-utm="banner"]'), 'missing database explained')
+        pg.click('[data-utm="banner"] [data-utm-action="update"]'); pg.wait_for_timeout(400)
+        check(any(u.endswith('/api/unisense/trafficmap/update') and tok for u, tok in posts), f'download starts (POST with CSRF token) {posts}')
+        check('Downloading' in pg.inner_text('[data-utm="banner"]'), 'download progress shown')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+        del os.environ['UNISENSE_HARNESS_NODB']
 
         # --------------------------------------------- footer credit + rail
         print('footer credit and collapsed rail')
