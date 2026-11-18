@@ -35,6 +35,10 @@ INDEX="${BASE}/www/index.php"
 CACHE_DIR="${PREFIX}/var/lib/php/tmp"
 CONFIG="${PREFIX}/conf/config.xml"
 PHP="${UNISENSE_PHP:-/usr/local/bin/php}"
+# download locations (overridable only for the installer tests)
+RELEASES="${UNISENSE_RELEASES:-https://github.com/${REPO}/releases}"
+CODELOAD="${UNISENSE_CODELOAD:-https://codeload.github.com/${REPO}/tar.gz}"
+GH_API="${UNISENSE_GH_API:-https://api.github.com/repos/${REPO}}"
 SETTHEME="${BASE}/scripts/unisense/settheme.php"
 MIGRATE="${BASE}/mvc/script/run_migrations.php"
 
@@ -157,7 +161,7 @@ download() {
 	if [ -n "${GITHUB_TOKEN:-}" ]; then
 		command -v curl >/dev/null 2>&1 || die "GITHUB_TOKEN needs curl"
 		curl -fsSL --retry 2 --max-time 120 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-		    -H "Accept: application/octet-stream" -o "$2" "$1"
+		    -H "Accept: application/vnd.github+json" -o "$2" "$1"
 	elif command -v fetch >/dev/null 2>&1; then
 		fetch -q -T 60 -o "$2" "$1"
 	elif command -v curl >/dev/null 2>&1; then
@@ -183,14 +187,30 @@ confirm() {
 # locate the "opnsense" tree (mirror of /usr/local/opnsense) inside DIR;
 # with a second argument "shallow" only the usual layouts are checked
 find_tree() {
-	for c in "$1" "$1/opnsense" "$1/unisense/opnsense" "$1/misc/theme-unisense/src/opnsense"; do
-		if [ -f "$c/www/themes/unisense/build/css/main.css" ]; then
-			(cd "$c" && pwd)
-			return 0
-		fi
+	# the directory itself, plus (unless shallow) every top-level folder in
+	# it: GitHub source tarballs wrap the repository in "<repo>-<ref>/"
+	roots="$1"
+	if [ "${2:-}" != "shallow" ]; then
+		for d in "$1"/*/; do
+			[ -d "$d" ] && roots="$roots
+${d%/}"
+		done
+	fi
+	old_ifs="$IFS"
+	IFS='
+'
+	for r in $roots; do
+		for c in "$r" "$r/opnsense" "$r/unisense/opnsense" "$r/misc/theme-unisense/src/opnsense"; do
+			if [ -f "$c/www/themes/unisense/build/css/main.css" ]; then
+				IFS="$old_ifs"
+				(cd "$c" && pwd)
+				return 0
+			fi
+		done
 	done
+	IFS="$old_ifs"
 	[ "${2:-}" != "shallow" ] || return 1
-	hit="$(find "$1" -maxdepth 7 -type f -path '*/www/themes/unisense/build/css/main.css' 2>/dev/null | head -n 1)"
+	hit="$(find "$1" -maxdepth 14 -type f -path '*/www/themes/unisense/build/css/main.css' 2>/dev/null | head -n 1)"
 	if [ -n "$hit" ]; then
 		(cd "$(dirname "$hit")/../../../../.." && pwd)
 		return 0
@@ -232,25 +252,30 @@ fetch_source() {
 		download "$URL" "$TMP/src.tar.gz" || die "download failed: $URL"
 	elif [ -n "${GITHUB_TOKEN:-}" ]; then
 		ref="${BRANCH:-main}"
-		[ "$VERSION" = "latest" ] || ref="v${VERSION}"
-		url="https://api.github.com/repos/${REPO}/tarball/${ref}"
+		if [ "$VERSION" != "latest" ]; then
+			ref="v${VERSION}"
+		elif [ -z "$BRANCH" ] && download "${GH_API}/releases/latest" "$TMP/release.json" 2>/dev/null; then
+			tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$TMP/release.json" | head -n 1)"
+			[ -z "$tag" ] || ref="$tag"
+		fi
+		url="${GH_API}/tarball/${ref}"
 		step "Downloading ${REPO}@${ref} (authenticated)"
 		download "$url" "$TMP/src.tar.gz" || die "download failed — check GITHUB_TOKEN and the repository name"
 	elif [ -n "$BRANCH" ]; then
-		url="https://codeload.github.com/${REPO}/tar.gz/refs/heads/${BRANCH}"
+		url="${CODELOAD}/refs/heads/${BRANCH}"
 		step "Downloading branch ${BRANCH}"
 		download "$url" "$TMP/src.tar.gz" || die "download failed: $url"
 	else
 		if [ "$VERSION" = "latest" ]; then
-			url="https://github.com/${REPO}/releases/latest/download/unisense.tar.gz"
+			url="${RELEASES}/latest/download/unisense.tar.gz"
 		else
-			url="https://github.com/${REPO}/releases/download/v${VERSION}/unisense.tar.gz"
+			url="${RELEASES}/download/v${VERSION}/unisense.tar.gz"
 		fi
 		step "Downloading UniSense ${VERSION}"
 		if ! download "$url" "$TMP/src.tar.gz" 2>/dev/null; then
 			[ "$VERSION" = "latest" ] || die "release v${VERSION} not found"
 			warn "no published release yet — installing the main branch"
-			download "https://codeload.github.com/${REPO}/tar.gz/refs/heads/main" "$TMP/src.tar.gz" ||
+			download "${CODELOAD}/refs/heads/main" "$TMP/src.tar.gz" ||
 			    die "download failed (is the repository private? then export GITHUB_TOKEN)"
 		fi
 	fi

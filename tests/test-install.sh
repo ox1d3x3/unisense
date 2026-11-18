@@ -1,9 +1,10 @@
 #!/bin/sh
 # Installer tests: run install.sh against a fake OPNsense root.
 # A small PHP shim stands in for settheme.php / run_migrations.php.
-# shellcheck disable=SC2016  # assertions are evaluated later, on purpose
+# shellcheck disable=SC2016,SC2034  # assertions are evaluated later, on purpose
 set -eu
 cd "$(dirname "$0")/.."
+unset GITHUB_TOKEN GH_TOKEN || true
 REPO_DIR="$(pwd)"
 PASS=0
 FAIL=0
@@ -88,18 +89,69 @@ t "archive layout" '[ -s "$W/rel/unisense/install.sh" ] && [ -s "$W/rel/unisense
 (cd "$W/rel/unisense" && sh install.sh --yes >/dev/null)
 t "installer uses the files next to it" '[ -s "$B/www/js/unisense/networkmap.js" ] && [ "$(theme)" = unisense ]'
 
-echo "piped and URL install"
+echo "GitHub downloads (mock server with GitHub's URL layout)"
+sh install.sh --uninstall --yes >/dev/null
+WEB="$W/web"
+mkdir -p "$WEB/codeload/refs/heads" "$WEB/releases" "$W/gh/unisense-main" "$W/gh/ox1d3x3-unisense-0123abc"
+# GitHub source tarballs: the whole repository inside "<repo>-<ref>/"
+git ls-files -co --exclude-standard | while IFS= read -r f; do
+	[ -f "$f" ] || continue
+	for d in unisense-main ox1d3x3-unisense-0123abc; do
+		mkdir -p "$W/gh/$d/$(dirname "$f")" && cp -p "$f" "$W/gh/$d/$f"
+	done
+done
+tar -czf "$WEB/codeload/refs/heads/main" -C "$W/gh" unisense-main
+tar -czf "$WEB/api-tarball.tar.gz" -C "$W/gh" ox1d3x3-unisense-0123abc
+PORT=$(( 20000 + $$ % 20000 ))
+( cd "$WEB" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 ) & SRV=$!
+trap 'kill "$SRV" 2>/dev/null || true' EXIT
+sleep 1
+export UNISENSE_RELEASES="http://127.0.0.1:$PORT/releases" UNISENSE_CODELOAD="http://127.0.0.1:$PORT/codeload"
+
+out="$(sh < install.sh 2>&1)" || true
+t "fetch ... | sh with no release falls back to main" 'printf "%s" "$out" | grep -q "installing the main branch" && [ -s "$B/www/js/unisense/networkmap.js" ] && [ "$(theme)" = unisense ]'
+sh install.sh --uninstall --yes >/dev/null
+sh install.sh --branch main --yes >/dev/null
+t "--branch main (GitHub tarball layout)" '[ -s "$B/mvc/app/views/OPNsense/Unisense/networkmap.volt" ]'
+sh install.sh --uninstall --yes >/dev/null
+sh install.sh --url "http://127.0.0.1:$PORT/api-tarball.tar.gz" --yes >/dev/null
+t "GitHub API tarball layout" '[ -s "$B/www/themes/unisense/build/css/main.css" ] && [ "$(theme)" = unisense ]'
+
+V="$(cat misc/theme-unisense/src/opnsense/www/themes/unisense/VERSION)"
+mkdir -p "$WEB/releases/latest/download" "$WEB/releases/download/v$V"
+cp dist/unisense.tar.gz "$WEB/releases/latest/download/"
+cp dist/unisense.tar.gz "$WEB/releases/download/v$V/"
+sh install.sh --uninstall --yes >/dev/null
+out="$(sh < install.sh 2>&1)" || true
+t "fetch ... | sh uses the published release" '! printf "%s" "$out" | grep -q "main branch" && [ -s "$B/www/js/unisense/networkmap.js" ] && [ "$(theme)" = unisense ]'
+sh install.sh --version "$V" --yes >/dev/null
+t "--version installs that release" '[ "$(cat "$B/www/themes/unisense/VERSION")" = "$V" ]'
+t "--version of a missing release fails cleanly" '! sh install.sh --version 9.9.9 --yes >/dev/null 2>&1 && [ -s "$B/www/themes/unisense/build/css/main.css" ]'
+
+if command -v curl >/dev/null 2>&1; then
+	mkdir -p "$WEB/api/tarball" "$WEB/api/releases"
+	cp "$WEB/api-tarball.tar.gz" "$WEB/api/tarball/main"
+	cp "$WEB/api-tarball.tar.gz" "$WEB/api/tarball/v$V"
+	printf '{\n  "url": "x",\n  "tag_name": "v%s",\n  "name": "UniSense"\n}\n' "$V" > "$WEB/api/releases/latest"
+	sh install.sh --uninstall --yes >/dev/null
+	out="$(GITHUB_TOKEN=test UNISENSE_GH_API="http://127.0.0.1:$PORT/api" sh -s -- --yes < install.sh 2>&1)" || true
+	t "GITHUB_TOKEN install picks the latest release tag" 'printf "%s" "$out" | grep -q "@v$V" && [ -s "$B/www/js/unisense/networkmap.js" ]'
+	rm -f "$WEB/api/releases/latest"
+	out="$(GITHUB_TOKEN=test UNISENSE_GH_API="http://127.0.0.1:$PORT/api" sh -s -- --yes < install.sh 2>&1)" || true
+	t "GITHUB_TOKEN install falls back to main" 'printf "%s" "$out" | grep -q "@main" && [ "$(theme)" = unisense ]'
+fi
+
 sh install.sh --uninstall --yes >/dev/null
 sh -s -- --local "$REPO_DIR" < install.sh >/dev/null
-t "fetch ... | sh style works" '[ -s "$B/www/themes/unisense/build/css/main.css" ]'
+t "sh -s -- --local works" '[ -s "$B/www/themes/unisense/build/css/main.css" ]'
 sh install.sh --uninstall --yes >/dev/null
-PORT=$(( 20000 + $$ % 20000 ))
-( cd dist && python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 ) & SRV=$!
-sleep 1
+cp dist/unisense.tar.gz "$WEB/"
 sh install.sh --url "http://127.0.0.1:$PORT/unisense.tar.gz" --yes >/dev/null
-kill "$SRV" 2>/dev/null || true
 t "--url install works" '[ -s "$B/mvc/app/views/OPNsense/Unisense/networkmap.volt" ] && [ "$(theme)" = unisense ]'
 t "a broken URL fails cleanly" '! sh install.sh --url "http://127.0.0.1:1/nope.tar.gz" --yes >/dev/null 2>&1 && [ -s "$B/www/themes/unisense/build/css/main.css" ]'
+kill "$SRV" 2>/dev/null || true
+trap - EXIT
+unset UNISENSE_RELEASES UNISENSE_CODELOAD
 rm -rf "$W"
 
 echo "$PASS passed, $FAIL failed"
