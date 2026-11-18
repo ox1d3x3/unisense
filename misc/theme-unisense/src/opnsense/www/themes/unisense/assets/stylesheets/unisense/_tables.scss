@@ -1,0 +1,139 @@
+// ===========================================================================
+// UniSense — tables (Bootstrap .table, legacy opnsense_standard_table_form,
+// base_form / base_dialog form tables). Tabulator grids: opnsense-bootgrid.scss
+// ===========================================================================
+
+.table {
+  color: inherit;
+  background-color: transparent;
+
+  > thead > tr > th,
+  > tbody > tr > th,
+  > tfoot > tr > th,
+  > thead > tr > td,
+  > tbody > tr > td,
+  > tfoot > tr > td {
+    padding: 10px 12px;
+    border-top: 1px solid var(--us-line-2);
+    vertical-align: middle;
+  }
+
+  > thead > tr > th {
+    border-bottom: 1px solid var(--us-line);
+    color: var(--us-text-3);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  // full-width header cells are section titles, not column labels
+  > thead > tr > th[colspan] {
+    color: var(--us-heading);
+    font-size: 15px;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: normal;
+
+    div { color: inherit; }
+    .fa-angle-right, .fa-angle-down { color: var(--us-text-3); width: 10px; }
+  }
+
+  // first row after a <colgroup> or at the top never needs a divider
+  > colgroup + tbody > tr:first-child > td,
+  > colgroup + tbody > tr:first-child > th,
+  > tbody:first-child > tr:first-child > td,
+  > tbody:first-child > tr:first-child > th,
+  > colgroup + thead > tr:first-child > th { border-top: 0; }
+
+  > tbody + tbody { border-top: 1px solid var(--us-line); }
+
+  // collapsible section headers (base_form)
+  > thead[style*="cursor"] > tr > th:hover { color: var(--us-accent); }
+}
+
+.table-condensed {
+  > thead > tr > th,
+  > tbody > tr > th,
+  > tfoot > tr > th,
+  > thead > tr > td,
+  > tbody > tr > td,
+  > tfoot > tr > td { padding: 7px 10px; }
+}
+
+// UniFi tables are dividers-only; neutralise zebra striping
+// (core's Bootstrap paints the cells of odd rows)
+.table-striped > tbody > tr:nth-of-type(odd),
+.table-striped > tbody > tr:nth-child(odd) > td,
+.table-striped > tbody > tr:nth-child(odd) > th { background-color: transparent; }
+
+.table-hover > tbody > tr:hover { background-color: var(--us-surface-hover); }
+
+.table-bordered {
+  border-color: var(--us-line);
+  border-radius: var(--us-radius-sm);
+  > thead > tr > th, > tbody > tr > th, > tfoot > tr > th,
+  > thead > tr > td, > tbody > tr > td, > tfoot > tr > td { border-color: var(--us-line); }
+}
+
+// contextual rows
+.table > thead > tr, .table > tbody > tr, .table > tfoot > tr {
+  > td.success, > th.success, &.success > td, &.success > th { background-color: var(--us-ok-soft); }
+  > td.info,    > th.info,    &.info > td,    &.info > th    { background-color: var(--us-info-soft); }
+  > td.warning, > th.warning, &.warning > td, &.warning > th { background-color: var(--us-warn-soft); }
+  > td.danger,  > th.danger,  &.danger > td,  &.danger > th  { background-color: var(--us-crit-soft); }
+  > td.active,  > th.active,  &.active > td,  &.active > th  { background-color: var(--us-surface-3); }
+}
+
+// cards: align cell padding with the card edge
+.content-box .table,
+.modal-body .table {
+  > thead > tr > th:first-child,
+  > tbody > tr > td:first-child,
+  > tbody > tr > th:first-child,
+  > tfoot > tr > td:first-child { padding-left: 16px; }
+
+  > thead > tr > th:last-child,
+  > tbody > tr > td:last-child,
+  > tbody > tr > th:last-child,
+  > tfoot > tr > td:last-child { padding-right: 16px; }
+}
+
+.table-responsive {
+  border: 0;
+  margin-bottom: 0;
+}
+
+// form tables: label column + field + help
+.opnsense_standard_table_form,
+.content-box form .table,
+.modal-body form .table {
+  > tbody > tr > td:first-child {
+    color: var(--us-text);
+    font-weight: 500;
+  }
+  .control-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    b { font-weight: 500; }
+  }
+  .showhelp,
+  .control-label .fa-info-circle { color: var(--us-text-3); }
+  .showhelp:hover .fa,
+  a.showhelp:hover { color: var(--us-accent); }
+}
+
+// inline help text revealed by the (i) icons
+[data-for*="help_for"],
+.help-block {
+  margin-top: 6px;
+  color: var(--us-text-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+// the row tools above a form (advanced mode / full help toggles)
+.table .fa-toggle-on,
+.table .fa-toggle-off { font-size: 16px; vertical-align: -2px; }

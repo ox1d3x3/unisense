@@ -1,0 +1,7 @@
+node_modules/
+tests/harness/site/
+tests/harness/shots/
+tests/harness/__pycache__/
+dist/
+*.pyc
+.DS_Store

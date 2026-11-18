@@ -1,0 +1,114 @@
+// ===========================================================================
+// UniSense — sign-in page (authgui.inc display_login_form) and the simple
+// logout/message page that shares body.page-login
+// ===========================================================================
+
+.page-login {
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, color-mix(in srgb, var(--us-accent) 16%, transparent), transparent 70%),
+    var(--us-bg);
+  background-attachment: fixed;
+
+  > .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    margin-bottom: 0;
+    padding: 40px 16px 24px;
+
+    &::before, &::after { display: none; }
+  }
+}
+
+.login-modal-container {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto 18px;
+  overflow: hidden;
+  border: 1px solid var(--us-line);
+  border-radius: 16px;
+  background: var(--us-surface);
+  box-shadow: var(--us-shadow-pop);
+}
+
+.login-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88px !important;
+  padding: 0 24px;
+  background: var(--us-rail);
+
+  .navbar-brand {
+    float: none;
+    height: auto;
+    margin: 0;
+    padding: 0 !important;
+
+    img { height: 44px; width: auto; }
+  }
+}
+
+.login-modal-content {
+  padding: 4px 28px 28px;
+
+  #inputerrors {
+    min-height: 20px;
+    margin: 14px 0 0;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    &:not(:empty) { color: var(--us-crit-text); }
+  }
+  #inputerrors + br { display: none; }
+
+  form.clearfix {
+    margin: 12px 0 0;
+  }
+
+  .form-group { margin-bottom: 16px; }
+
+  label {
+    margin-bottom: 6px;
+    color: var(--us-text-2);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .form-control { height: 40px; font-size: 15px; }
+
+  .btn-primary {
+    float: none !important;
+    width: 100%;
+    height: 42px;
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .login-sso-link-container {
+    margin-top: 14px;
+    text-align: center;
+  }
+}
+
+.login-foot {
+  color: var(--us-text-3);
+  font-size: 12px;
+  a { color: var(--us-text-2); &:hover { color: var(--us-accent); } }
+}
+
+// logout / message variant (body.page-login > #container)
+.page-login > #container,
+.page-login > div[id='container"'] {
+  max-width: 420px;
+  margin: 15vh auto 0;
+  padding: 24px;
+  border: 1px solid var(--us-line);
+  border-radius: var(--us-radius);
+  background: var(--us-surface);
+  text-align: center;
+}

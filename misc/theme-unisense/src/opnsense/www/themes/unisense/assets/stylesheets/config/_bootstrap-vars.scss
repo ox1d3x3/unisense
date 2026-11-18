@@ -1,0 +1,294 @@
+// ---------------------------------------------------------------------------
+// UniSense — Bootstrap 3 variable overrides. Imported before
+// bootstrap/variables, whose values are all !default.
+// Every colour is a runtime token so a single build serves light and dark.
+// ---------------------------------------------------------------------------
+
+// typography
+$font-family-sans-serif:  var(--us-font);
+$font-family-monospace:   var(--us-mono);
+$font-size-base:          14px;
+$line-height-base:        1.5;
+$headings-font-weight:    600;
+$headings-color:          var(--us-heading);
+
+// radii
+$border-radius-base:      8px;
+$border-radius-large:     10px;
+$border-radius-small:     6px;
+
+// greys
+$gray-darker:   var(--us-heading);
+$gray-dark:     var(--us-text);
+$gray:          var(--us-text-2);
+$gray-light:    var(--us-text-3);
+$gray-lighter:  var(--us-surface-3);
+
+// brand
+$brand-primary: var(--us-accent);
+$brand-success: var(--us-ok);
+$brand-info:    var(--us-accent);
+$brand-warning: var(--us-warn);
+$brand-danger:  var(--us-crit);
+
+$body-bg:          var(--us-bg);
+$text-color:       var(--us-text);
+$link-color:       var(--us-accent);
+$link-hover-color: var(--us-accent-hover);
+
+$component-active-color: var(--us-on-accent);
+$component-active-bg:    var(--us-accent);
+
+// tables
+$table-bg:             transparent;
+$table-bg-accent:      var(--us-surface-2);
+$table-bg-hover:       var(--us-surface-hover);
+$table-bg-active:      var(--us-accent-soft);
+$table-border-color:   var(--us-line);
+
+// buttons
+$btn-font-weight:           500;
+$btn-default-color:         var(--us-text);
+$btn-default-bg:            var(--us-surface);
+$btn-default-border:        var(--us-input-border);
+$btn-primary-color:         var(--us-on-accent);
+$btn-primary-bg:            var(--us-accent);
+$btn-primary-border:        var(--us-accent);
+$btn-success-color:         #ffffff;
+$btn-success-bg:            var(--us-ok-strong);
+$btn-success-border:        var(--us-ok-strong);
+$btn-info-color:            var(--us-accent-strong);
+$btn-info-bg:               var(--us-accent-soft);
+$btn-info-border:           transparent;
+$btn-warning-color:         #1c1e21;
+$btn-warning-bg:            var(--us-warn);
+$btn-warning-border:        var(--us-warn);
+$btn-danger-color:          #ffffff;
+$btn-danger-bg:             var(--us-crit);
+$btn-danger-border:         var(--us-crit);
+$btn-link-disabled-color:   var(--us-text-3);
+
+// forms
+$input-bg:                  var(--us-input-bg);
+$input-bg-disabled:         var(--us-input-disabled);
+$input-color:               var(--us-text);
+$input-border:              var(--us-input-border);
+$input-border-radius:       8px;
+$input-border-radius-large: 10px;
+$input-border-radius-small: 6px;
+$input-border-focus:        var(--us-accent);
+$input-color-placeholder:   var(--us-text-3);
+$input-height-base:         36px;
+$input-height-large:        44px;
+$input-height-small:        30px;
+$legend-color:              var(--us-heading);
+$legend-border-color:       var(--us-line);
+$input-group-addon-bg:      var(--us-surface-3);
+$input-group-addon-border-color: var(--us-input-border);
+$cursor-disabled:           not-allowed;
+
+// dropdowns
+$dropdown-bg:                 var(--us-surface);
+$dropdown-border:             var(--us-line);
+$dropdown-fallback-border:    var(--us-line);
+$dropdown-divider-bg:         var(--us-line);
+$dropdown-link-color:         var(--us-text);
+$dropdown-link-hover-color:   var(--us-heading);
+$dropdown-link-hover-bg:      var(--us-surface-hover);
+$dropdown-link-active-color:  var(--us-on-accent);
+$dropdown-link-active-bg:     var(--us-accent);
+$dropdown-link-disabled-color: var(--us-text-3);
+$dropdown-header-color:       var(--us-text-3);
+$dropdown-caret-color:        var(--us-text);
+
+// navbar (top bar)
+$navbar-height:                     56px;
+$navbar-default-color:              var(--us-text-2);
+$navbar-default-bg:                 var(--us-topbar);
+$navbar-default-border:             var(--us-line);
+$navbar-default-link-color:         var(--us-text-2);
+$navbar-default-link-hover-color:   var(--us-heading);
+$navbar-default-link-hover-bg:      transparent;
+$navbar-default-link-active-color:  var(--us-heading);
+$navbar-default-link-active-bg:     var(--us-surface-3);
+$navbar-default-link-disabled-color: var(--us-text-3);
+$navbar-default-brand-color:        var(--us-heading);
+$navbar-default-brand-hover-color:  var(--us-heading);
+$navbar-default-toggle-hover-bg:    var(--us-surface-3);
+$navbar-default-toggle-icon-bar-bg: var(--us-text);
+$navbar-default-toggle-border-color: var(--us-line);
+
+$navbar-inverse-color:              var(--us-rail-text);
+$navbar-inverse-bg:                 var(--us-rail);
+$navbar-inverse-border:             var(--us-rail-line);
+$navbar-inverse-link-color:         var(--us-rail-text);
+$navbar-inverse-link-hover-color:   var(--us-rail-text-hi);
+$navbar-inverse-link-active-bg:     var(--us-rail-hover);
+$navbar-inverse-link-disabled-color: var(--us-rail-text-2);
+$navbar-inverse-brand-color:        var(--us-rail-text-hi);
+$navbar-inverse-brand-hover-color:  var(--us-rail-text-hi);
+$navbar-inverse-toggle-hover-bg:    var(--us-rail-hover);
+$navbar-inverse-toggle-icon-bar-bg: var(--us-rail-text-hi);
+$navbar-inverse-toggle-border-color: var(--us-rail-line);
+
+// navs / tabs
+$nav-link-hover-bg:                       var(--us-surface-hover);
+$nav-disabled-link-color:                 var(--us-text-3);
+$nav-disabled-link-hover-color:           var(--us-text-3);
+$nav-open-link-hover-color:               var(--us-on-accent);
+$nav-tabs-border-color:                   var(--us-line);
+$nav-tabs-link-hover-border-color:        transparent;
+$nav-tabs-active-link-hover-bg:           var(--us-surface);
+$nav-tabs-active-link-hover-color:        var(--us-heading);
+$nav-tabs-active-link-hover-border-color: var(--us-line);
+$nav-tabs-justified-link-border-color:    var(--us-line);
+$nav-tabs-justified-active-link-border-color: var(--us-surface);
+$nav-pills-border-radius:                 8px;
+
+// pagination
+$pagination-color:           var(--us-text-2);
+$pagination-bg:              var(--us-surface);
+$pagination-border:          var(--us-line);
+$pagination-hover-color:     var(--us-heading);
+$pagination-hover-bg:        var(--us-surface-hover);
+$pagination-hover-border:    var(--us-line);
+$pagination-active-color:    var(--us-on-accent);
+$pagination-active-bg:       var(--us-accent);
+$pagination-active-border:   var(--us-accent);
+$pagination-disabled-color:  var(--us-text-3);
+$pagination-disabled-bg:     var(--us-surface);
+$pagination-disabled-border: var(--us-line);
+
+$jumbotron-bg: var(--us-surface-2);
+
+// states / alerts
+$state-success-text:   var(--us-ok-text);
+$state-success-bg:     var(--us-ok-soft);
+$state-success-border: transparent;
+$state-info-text:      var(--us-info-text);
+$state-info-bg:        var(--us-info-soft);
+$state-info-border:    transparent;
+$state-warning-text:   var(--us-warn-text);
+$state-warning-bg:     var(--us-warn-soft);
+$state-warning-border: transparent;
+$state-danger-text:    var(--us-crit-text);
+$state-danger-bg:      var(--us-crit-soft);
+$state-danger-border:  transparent;
+
+// tooltip / popover
+$tooltip-color:      var(--us-tooltip-text);
+$tooltip-bg:         var(--us-tooltip-bg);
+$tooltip-opacity:    1;
+$tooltip-arrow-color: var(--us-tooltip-bg);
+$popover-bg:                     var(--us-surface);
+$popover-border-color:           var(--us-line);
+$popover-fallback-border-color:  var(--us-line);
+$popover-title-bg:               var(--us-surface-2);
+$popover-arrow-color:            var(--us-surface);
+$popover-arrow-outer-color:      var(--us-line);
+$popover-arrow-outer-fallback-color: var(--us-line);
+
+// labels / badges
+$label-default-bg:       var(--us-text-3);
+$label-primary-bg:       var(--us-accent);
+$label-success-bg:       var(--us-ok-strong);
+$label-info-bg:          var(--us-accent);
+$label-warning-bg:       var(--us-warn-strong);
+$label-danger-bg:        var(--us-crit);
+$label-color:            #ffffff;
+$label-link-hover-color: #ffffff;
+$badge-color:            var(--us-text-2);
+$badge-link-hover-color: var(--us-heading);
+$badge-bg:               var(--us-surface-3);
+$badge-active-color:     var(--us-accent);
+$badge-active-bg:        var(--us-surface);
+$badge-font-weight:      600;
+
+// modals
+$modal-content-bg:                    var(--us-surface);
+$modal-content-border-color:          var(--us-line);
+$modal-content-fallback-border-color: var(--us-line);
+$modal-backdrop-bg:                   #000;
+$modal-backdrop-opacity:              .5;
+$modal-header-border-color:           var(--us-line);
+$modal-footer-border-color:           var(--us-line);
+
+// progress
+$progress-bg:             var(--us-surface-3);
+$progress-bar-color:      #ffffff;
+$progress-border-radius:  999px;
+$progress-bar-bg:         var(--us-accent);
+$progress-bar-success-bg: var(--us-ok);
+$progress-bar-warning-bg: var(--us-warn);
+$progress-bar-danger-bg:  var(--us-crit);
+$progress-bar-info-bg:    var(--us-accent);
+
+// list group (content area; the sidebar menu is styled separately in unisense/_sidebar)
+$list-group-bg:                 var(--us-surface);
+$list-group-border:             var(--us-line);
+$list-group-border-radius:      8px;
+$list-group-hover-bg:           var(--us-surface-hover);
+$list-group-active-color:       var(--us-on-accent);
+$list-group-active-bg:          var(--us-accent);
+$list-group-active-border:      var(--us-accent);
+$list-group-active-text-color:  var(--us-on-accent);
+$list-group-disabled-color:     var(--us-text-3);
+$list-group-disabled-bg:        var(--us-surface-2);
+$list-group-disabled-text-color: var(--us-text-3);
+$list-group-link-color:         var(--us-text);
+$list-group-link-hover-color:   var(--us-heading);
+$list-group-link-heading-color: var(--us-heading);
+
+// panels
+$panel-bg:                  var(--us-surface);
+$panel-border-radius:       12px;
+$panel-inner-border:        var(--us-line);
+$panel-footer-bg:           var(--us-surface-2);
+$panel-default-text:        var(--us-heading);
+$panel-default-border:      var(--us-line);
+$panel-default-heading-bg:  var(--us-surface-2);
+$panel-primary-text:        var(--us-on-accent);
+$panel-primary-border:      var(--us-accent);
+$panel-primary-heading-bg:  var(--us-accent);
+$panel-success-text:        var(--us-ok-text);
+$panel-success-border:      var(--us-line);
+$panel-success-heading-bg:  var(--us-ok-soft);
+$panel-info-text:           var(--us-info-text);
+$panel-info-border:         var(--us-line);
+$panel-info-heading-bg:     var(--us-info-soft);
+$panel-warning-text:        var(--us-warn-text);
+$panel-warning-border:      var(--us-line);
+$panel-warning-heading-bg:  var(--us-warn-soft);
+$panel-danger-text:         var(--us-crit-text);
+$panel-danger-border:       var(--us-line);
+$panel-danger-heading-bg:   var(--us-crit-soft);
+
+// misc
+$thumbnail-bg:            var(--us-surface);
+$thumbnail-border:        var(--us-line);
+$thumbnail-caption-color: var(--us-text);
+$well-bg:                 var(--us-surface-2);
+$well-border:             var(--us-line);
+$breadcrumb-bg:           transparent;
+$breadcrumb-color:        var(--us-text-3);
+$breadcrumb-active-color: var(--us-text-2);
+$close-color:             var(--us-text);
+$close-text-shadow:       none;
+$code-color:              var(--us-code-text);
+$code-bg:                 var(--us-code-bg);
+$kbd-color:               var(--us-surface);
+$kbd-bg:                  var(--us-text);
+$pre-bg:                  var(--us-code-bg);
+$pre-color:               var(--us-text);
+$pre-border-color:        var(--us-line);
+$text-muted:              var(--us-text-3);
+$abbr-border-color:       var(--us-text-3);
+$headings-small-color:    var(--us-text-3);
+$blockquote-small-color:  var(--us-text-3);
+$blockquote-border-color: var(--us-line);
+$page-header-border-color: var(--us-line);
+$hr-border:               var(--us-line);
+
+$font-family-base:      var(--us-font);
+$headings-font-family:  var(--us-font);
+$icon-font-path:        "/ui/themes/opnsense/build/fonts/bootstrap/";

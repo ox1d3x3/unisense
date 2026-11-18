@@ -1,0 +1,11 @@
+UniSense theme for OPNsense — BSD 2-Clause License, see the LICENSE file at
+https://github.com/ox1d3x3/unisense
+
+Third-party components in this directory:
+
+* Bootstrap 3 Sass (assets/stylesheets/bootstrap) — MIT License,
+  Copyright (c) 2011-2016 Twitter, Inc. As modified by the OPNsense project.
+* bootstrap-select styles (assets/stylesheets/bootstrap-select.scss) — MIT
+  License, see LICENSE.bootstrap-select.
+* Logo lettering is outlined from the Inter typeface — SIL Open Font
+  License 1.1, Copyright (c) 2016 The Inter Project Authors.

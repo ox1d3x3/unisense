@@ -1,0 +1,191 @@
+// ===========================================================================
+// UniSense — third-party widgets whose stylesheets core loads AFTER main.css
+// (tokenize2, bootstrap-datepicker, nv.d3, jqTree, legacy jquery.bootgrid,
+// gridstack). Selectors are prefixed with `html` to win on specificity
+// without !important.
+// ===========================================================================
+
+// ---------------------------------------------------------------- tokenize2
+html .tokenize > .tokens-container {
+  min-height: 36px;
+  padding: 0 0 4px 4px;
+  border: 1px solid var(--us-input-border);
+  border-radius: var(--us-radius-sm);
+  background-color: var(--us-input-bg);
+  color: var(--us-text);
+  transition: border-color .15s, box-shadow .15s;
+
+  &.disabled { background-color: var(--us-input-disabled); }
+
+  > .token,
+  > .placeholder,
+  > .token-search { margin: 4px 4px 0 0; }
+
+  > .token {
+    padding: 1px 1.6em 1px 8px;
+    border: 0;
+    border-radius: var(--us-radius-xs);
+    background-color: var(--us-accent-soft);
+    color: var(--us-accent-strong);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 20px;
+
+    > .dismiss { right: 6px; color: var(--us-accent-strong); opacity: .7; &:hover { opacity: 1; } }
+
+    &.pending-delete {
+      background-color: var(--us-crit);
+      color: #ffffff;
+      > .dismiss { color: #ffffff; }
+    }
+  }
+
+  > .placeholder { border-color: transparent; color: var(--us-text-3); line-height: 22px; }
+  > .token-search { border-color: transparent; }
+  > .token-search > input {
+    height: 22px;
+    border: 0;
+    background: transparent;
+    color: var(--us-text);
+  }
+}
+html .tokenize.focus > .tokens-container {
+  border-color: var(--us-accent);
+  box-shadow: 0 0 0 3px var(--us-accent-soft);
+}
+html .tokenize.single > .tokens-container > .token {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--us-text);
+}
+html .tokenize.sortable > .tokens-container > .token.shadow {
+  border-color: var(--us-line);
+  background-color: var(--us-surface-3);
+}
+html .tokenize-dropdown > .dropdown-menu {
+  margin-top: 4px;
+  li.locked { color: var(--us-text-2); }
+  li:not(.active) a:hover,
+  li:not(.active) a:focus { background-color: var(--us-surface-hover); }
+}
+
+// ------------------------------------------------------ bootstrap-datepicker
+html .datepicker {
+  border-radius: 10px;
+  color: var(--us-text);
+
+  &.dropdown-menu { padding: 8px; }
+
+  table tr td,
+  table tr th { border-radius: var(--us-radius-xs); }
+
+  table tr td.old,
+  table tr td.new,
+  table tr td span.old,
+  table tr td span.new,
+  table tr td.disabled,
+  table tr td span.disabled { color: var(--us-text-3); }
+
+  table tr td.day:hover,
+  table tr td.focused,
+  table tr td span:hover,
+  table tr td span.focused,
+  .datepicker-switch:hover,
+  .prev:hover,
+  .next:hover,
+  tfoot tr th:hover { background: var(--us-surface-hover); }
+
+  table tr td.today,
+  table tr td.today:hover,
+  table tr td.today.focused {
+    border-color: transparent;
+    background: var(--us-warn-soft);
+    color: var(--us-warn-text);
+  }
+
+  table tr td.range,
+  table tr td.range:hover,
+  table tr td.highlighted,
+  table tr td.highlighted:hover {
+    border-color: transparent;
+    background: var(--us-accent-soft);
+    color: var(--us-text);
+  }
+
+  table tr td.active,
+  table tr td.active:hover,
+  table tr td.active.highlighted,
+  table tr td.selected,
+  table tr td.selected:hover,
+  table tr td span.active,
+  table tr td span.active:hover {
+    border-color: var(--us-accent);
+    background: var(--us-accent);
+    color: var(--us-on-accent);
+    text-shadow: none;
+  }
+}
+html .datepicker-dropdown {
+  &::before { border-bottom-color: var(--us-line); }
+  &::after { border-bottom-color: var(--us-surface); }
+  &.datepicker-orient-top::before { border-top-color: var(--us-line); }
+  &.datepicker-orient-top::after { border-top-color: var(--us-surface); }
+}
+html .input-daterange .input-group-addon { text-shadow: none; }
+
+// -------------------------------------------------------------------- nv.d3
+html .nvd3 {
+  text { fill: var(--us-text-2); font-family: var(--us-font); }
+  .nv-axis line,
+  .nv-axis path { stroke: var(--us-line); }
+  .nv-axis .zero line,
+  .nv-axis line.zero { stroke: var(--us-line-strong); }
+  .nv-legend-text { fill: var(--us-text-2); }
+  .nv-noData { fill: var(--us-text-3); }
+  .nv-brush .extent { fill-opacity: .12; fill: var(--us-accent); }
+}
+html .nvtooltip {
+  border: 1px solid var(--us-line);
+  border-radius: var(--us-radius-sm);
+  background: var(--us-surface);
+  color: var(--us-text) !important;
+  box-shadow: var(--us-shadow-pop);
+  font-family: var(--us-font);
+
+  table td, table th { color: var(--us-text); }
+  h3 { background: var(--us-surface-2); border-bottom-color: var(--us-line); color: var(--us-heading); }
+}
+
+// -------------------------------------------------------------------- jqTree
+html ul.jqtree-tree {
+  color: var(--us-text);
+  .jqtree-title { color: var(--us-accent) !important; }
+  .jqtree-toggler { color: var(--us-text-3); &:hover { color: var(--us-heading); } }
+  li.jqtree-selected > .jqtree-element,
+  li.jqtree-selected > .jqtree-element:hover {
+    background: var(--us-accent-soft);
+    text-shadow: none;
+  }
+}
+
+// ------------------------------------------- legacy jquery.bootgrid (compat)
+html .bootgrid-header .actionBar .btn-group > .btn-group .dropdown-menu .dropdown-item,
+html .bootgrid-footer .infoBar .btn-group > .btn-group .dropdown-menu .dropdown-item {
+  color: var(--us-text);
+  &:hover, &:focus { background-color: var(--us-surface-hover); color: var(--us-heading); }
+}
+html .bootgrid-table th > .column-header-anchor { color: var(--us-text-3) !important; }
+html .bootgrid-table th:hover,
+html .bootgrid-table th:active { background: var(--us-surface-hover); }
+html .bootgrid-table td.loading,
+html .bootgrid-table td.no-results { background: var(--us-surface); }
+
+// ------------------------------------------------------------------ gridstack
+html .grid-stack-placeholder > .placeholder-content {
+  border: 2px dashed var(--us-line-strong) !important;
+  border-radius: var(--us-radius);
+  background: var(--us-accent-soft) !important;
+}
+
+// ------------------------------------------------- bootstrap3-typeahead etc.
+html .typeahead.dropdown-menu > li > a { white-space: normal; }

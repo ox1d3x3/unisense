@@ -1,0 +1,470 @@
+// ===========================================================================
+// UniSense — application shell: top bar, content frame, page header, footer
+//
+// The markup is OPNsense core's (layouts/default.volt and the legacy
+// head.inc/fbegin.inc). Layout is adjusted with CSS only so core scripts such
+// as opnsense_theme.js (sidebar collapse) keep working unchanged.
+// ===========================================================================
+
+$us-sm: 768px;
+$us-md: 992px;
+$us-lg: 1200px;
+
+// ------------------------------------------------------------------ top bar
+.page-head {
+  height: var(--us-top-h);
+  background: var(--us-topbar);
+  box-shadow: inset 0 -1px 0 var(--us-line);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  backdrop-filter: saturate(180%) blur(12px);
+
+  .navbar {
+    min-height: var(--us-top-h);
+    height: var(--us-top-h);
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .navbar > .container-fluid {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0;
+
+    &::before, &::after { display: none; }
+  }
+
+  // brand block — dark in both modes, continues the navigation rail
+  .navbar-header {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 12px 0 16px;
+    background: var(--us-rail);
+    float: none;
+
+    &::before, &::after { display: none; }
+  }
+
+  .navbar-brand {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    float: none;
+
+    img.brand-logo,
+    img.brand-icon {
+      height: 36px;
+      width: auto;
+      max-width: none;
+    }
+  }
+
+  // mobile menu toggler
+  .navbar-toggle {
+    margin: 0 0 0 auto;
+    padding: 9px 8px;
+    border: 0;
+    border-radius: var(--us-radius-sm);
+    background: transparent;
+
+    .icon-bar { background-color: var(--us-rail-text); width: 20px; }
+    &:hover, &:focus { background: var(--us-rail-hover); }
+  }
+
+  // sidebar collapse button (shown by core opnsense_theme.js on wide screens)
+  button.toggle-sidebar {
+    flex: 0 0 auto;
+    float: none;
+    width: 32px;
+    height: 32px;
+    margin: 0 0 0 12px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--us-radius-sm);
+    background: transparent;
+    color: var(--us-text-3);
+    font-size: 13px;
+    line-height: 32px;
+    text-align: center;
+    cursor: pointer;
+
+    &:hover { background: var(--us-surface-3); color: var(--us-heading); }
+    &:focus-visible { outline: 2px solid var(--us-accent); outline-offset: 0; }
+  }
+
+  // right-hand tools
+  .navbar-collapse {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 16px 0 8px;
+    border: 0;
+    box-shadow: none;
+
+    &::before, &::after { display: none; }
+  }
+
+  .navbar-nav.navbar-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    float: none !important;
+    margin: 0;
+
+    &::before, &::after { display: none; }
+    > li { float: none; }
+  }
+
+  .navbar-text {
+    margin: 0;
+    float: none;
+    color: var(--us-text-2);
+    font-size: 13px;
+  }
+
+  #menu_messages .navbar-text {
+    display: inline-block;
+    max-width: 260px;
+    padding: 0 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  // system status dot -> small round button
+  #system_status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 11px;
+    transition: background-color .15s;
+
+    &:hover { background: var(--us-surface-3); }
+  }
+
+  // menu search
+  .navbar-form {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+
+    .input-group { display: flex; align-items: stretch; }
+
+    .input-group-addon {
+      display: flex;
+      align-items: center;
+      width: auto;
+      height: 34px;
+      padding: 0 4px 0 12px;
+      border: 1px solid var(--us-input-border);
+      border-right: 0;
+      border-radius: 999px 0 0 999px;
+      background: var(--us-input-bg);
+      color: var(--us-text-3);
+      font-size: 12px;
+    }
+
+    .form-control {
+      height: 34px;
+      max-width: calc(100vw - var(--us-rail-w) - 260px);
+      padding-left: 6px;
+      border-left: 0;
+      border-radius: 0 999px 999px 0;
+      box-shadow: none;
+      transition: width .2s var(--us-ease);
+    }
+
+    .input-group:focus-within .input-group-addon,
+    .input-group:focus-within .form-control {
+      border-color: var(--us-accent);
+    }
+    .input-group:focus-within {
+      border-radius: 999px;
+      box-shadow: 0 0 0 3px var(--us-accent-soft);
+    }
+  }
+
+  // menu search results (bootstrap3-typeahead)
+  .typeahead.dropdown-menu {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: ($us-md - 1)) {
+  .page-head #menu_messages { display: none; }
+}
+
+// phones: the whole bar is dark, brand + toggler only (core hides the rest)
+@media (max-width: ($us-sm - 1)) {
+  .page-head {
+    background: var(--us-rail);
+    box-shadow: inset 0 -1px 0 var(--us-rail-line);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+
+    .navbar-header {
+      flex: 1 1 auto;
+      width: 100%;
+      padding: 0 8px 0 14px;
+    }
+    .navbar-brand img.brand-icon { height: 34px; }
+  }
+}
+
+// wide screens: brand block matches the rail width
+@media (min-width: $us-sm) {
+  .page-head .navbar-header {
+    width: var(--us-rail-w);
+  }
+  // collapsed rail (core opnsense_theme.js adds .col-sidebar-left)
+  body:has(#navigation.col-sidebar-left) .page-head .navbar-header {
+    width: var(--us-rail-w-min);
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+// ------------------------------------------------------------ content frame
+.page-content {
+  background: var(--us-bg);
+  padding-top: var(--us-top-h);
+}
+
+@media (min-width: $us-sm) {
+  // fixed-width rail instead of the 25% / 16.7% Bootstrap columns
+  #navigation.page-side.col-sm-3:not(.col-sidebar-left) {
+    width: var(--us-rail-w);
+  }
+  main.page-content.col-sm-9.col-sm-push-3 {
+    left: var(--us-rail-w);
+    width: calc(100% - var(--us-rail-w));
+  }
+}
+
+@media (min-width: $us-lg) {
+  #navigation.page-side.col-lg-2:not(.col-sidebar-left) {
+    width: var(--us-rail-w);
+  }
+  main.page-content.col-lg-10.col-lg-push-2 {
+    left: var(--us-rail-w);
+    width: calc(100% - var(--us-rail-w));
+  }
+}
+
+// collapsed rail: core sets padding-left: 90px (70px rail + 20px); the
+// +15px offsets the negative margin of the .row inside <main>
+main.page-content.col-lg-12 {
+  padding-left: calc(var(--us-rail-w-min) + 15px);
+}
+
+// ------------------------------------------------------------- page header
+.page-content-head {
+  background: transparent;
+  border: 0;
+  padding: 22px 0 12px;
+
+  > .container-fluid {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .list-inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin: 0;
+
+    > li { padding: 0; }
+    > li:first-child { flex: 1 1 auto; min-width: 0; }
+  }
+
+  h1 {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -.01em;
+    color: var(--us-heading);
+    &:focus { outline: none; }
+  }
+
+  // favourites star (opnsense_favorites.js)
+  .menu-favorite-star {
+    font-size: 15px;
+    color: var(--us-text-3);
+    cursor: pointer;
+    transition: color .15s, transform .15s;
+
+    &:hover { color: var(--us-warn); transform: scale(1.12); }
+    &.fa-star { color: var(--us-warn); }
+  }
+
+  // service controls (start / stop / restart)
+  .btn-group-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    float: none !important;
+
+    form { display: flex; align-items: center; gap: 6px; margin: 0; }
+    .btn, .label-opnsense { margin: 0; }
+  }
+}
+
+.page-content-main {
+  background: transparent;
+  padding: 4px 0 88px;
+
+  > .container-fluid {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+// ------------------------------------------------------------------- footer
+.page-foot {
+  padding: 9px 0;
+  border-top: 1px solid var(--us-line);
+  background: var(--us-bg);
+  color: var(--us-text-3);
+  font-size: 12px;
+
+  > .container-fluid { padding-left: 24px; padding-right: 24px; }
+
+  a {
+    color: var(--us-text-2);
+    &:hover { color: var(--us-accent); }
+  }
+}
+
+// --------------------------------------------- appearance menu (theme.js)
+.us-appearance {
+  position: relative;
+  display: inline-flex;
+}
+
+.us-appearance-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--us-text-2);
+  cursor: pointer;
+
+  svg { width: 19px; height: 19px; display: block; }
+  &:hover, &[aria-expanded="true"] { background: var(--us-surface-3); color: var(--us-heading); }
+}
+
+.us-appearance-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1060;
+  width: 232px;
+  padding: 10px;
+  border: 1px solid var(--us-line);
+  border-radius: var(--us-radius);
+  background: var(--us-surface);
+  box-shadow: var(--us-shadow-pop);
+  color: var(--us-text);
+  text-align: left;
+
+  &[hidden] { display: none; }
+}
+
+.us-appearance-title {
+  margin: 2px 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--us-text-3);
+}
+
+.us-appearance-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+
+  button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px 6px;
+    border: 1px solid var(--us-line);
+    border-radius: var(--us-radius-sm);
+    background: var(--us-surface-2);
+    color: var(--us-text-2);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+
+    svg { width: 18px; height: 18px; }
+    &:hover { border-color: var(--us-line-strong); color: var(--us-heading); }
+    &.is-active {
+      border-color: var(--us-accent);
+      background: var(--us-accent-soft);
+      color: var(--us-accent-strong);
+    }
+  }
+}
+
+.us-appearance-accents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px 2px;
+
+  button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 2px solid var(--us-surface);
+    border-radius: 50%;
+    background: var(--us-swatch);
+    box-shadow: 0 0 0 1px var(--us-line);
+    cursor: pointer;
+
+    &:hover { transform: scale(1.1); }
+    &.is-active { box-shadow: 0 0 0 2px var(--us-swatch); }
+  }
+}
+
+// phones: the control lives in the dark bar, next to the menu toggler
+.navbar-header .us-appearance {
+  margin-left: auto;
+  .us-appearance-btn { color: var(--us-rail-text); &:hover, &[aria-expanded="true"] { background: var(--us-rail-hover); color: #fff; } }
+  + .navbar-toggle { margin-left: 4px; }
+}
+
+// login page: floating in the corner
+.us-appearance-floating {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 10;
+}

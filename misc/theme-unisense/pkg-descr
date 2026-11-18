@@ -1,0 +1,17 @@
+UniSense is a clean, controller-style theme for the OPNsense web GUI,
+inspired by UniFi OS: a dark navigation rail, card-based pages, quiet
+tables and rounded controls.
+
+It ships light, dark and automatic (follow the operating system) modes and
+six accent colours, switchable from the top bar without a page reload.
+Dashboard widgets, data grids, dialogs, legacy pages and the sign-in page
+are all styled, and the theme makes no external requests.
+
+Plugin Changelog
+================
+
+1.0
+
+* Initial release
+
+WWW: https://github.com/ox1d3x3/unisense

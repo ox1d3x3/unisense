@@ -1,0 +1,259 @@
+// ===========================================================================
+// UniSense — navigation rail (#navigation, core base_menu_system.volt)
+//
+// Expanded:  fixed-width dark rail, rounded items, accent marker on the page.
+// Collapsed: core opnsense_theme.js adds .col-sidebar-left and drives hover
+//            fly-outs with fixed pixel geometry (70px rail, 168px fly-outs,
+//            415px hover width). Those numbers are kept as-is.
+// ===========================================================================
+
+$us-rail-item-h: 58px;      // collapsed rail item (box incl. 3px margins = 64px)
+$us-fly-item-h:  30px;      // fly-out menu item
+
+#navigation.page-side {
+  top: 0;
+  margin-top: var(--us-top-h);
+  height: calc(100% - var(--us-top-h)) !important;
+  border-right: 0;
+  background: var(--us-rail);
+  color: var(--us-rail-text);
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(255, 255, 255, .16) transparent;
+
+  &::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .14); background-clip: content-box; }
+  &::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .24); background-clip: content-box; }
+}
+
+#navigation .page-side-nav {
+  padding: 10px 10px 28px;
+}
+
+#mainmenu,
+#mainmenu > .list-group {
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+// ---------------------------------------------------------------- items
+#mainmenu .list-group-item {
+  margin: 1px 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--us-radius-sm);
+  background: transparent;
+  color: var(--us-rail-text);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color .12s, color .12s;
+
+  &:hover,
+  &:focus {
+    background: var(--us-rail-hover);
+    color: var(--us-rail-text-hi);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--us-accent);
+    outline-offset: -2px;
+  }
+
+  // accent marker, shown on the current page only
+  &::before {
+    top: 8px;
+    bottom: 8px;
+    left: 0;
+    width: 0;
+    height: auto;
+    min-height: 0;
+    border-radius: 0 3px 3px 0;
+    background: var(--us-accent);
+  }
+
+  // the inner "display: table" wrapper core uses for the right-hand icon
+  > div { color: inherit; }
+  > div > div > div:last-child > span {
+    color: var(--us-rail-text-2);
+    font-size: 12px;
+    opacity: .9;
+  }
+
+  .caret { display: none; }
+}
+
+// top level
+#mainmenu > div > a.list-group-item {
+  font-weight: 500;
+
+  > .__iconspacer {
+    width: 22px;
+    margin-right: 10px;
+    padding: 0;
+    color: var(--us-rail-text-2);
+    font-size: 15px;
+    text-align: center;
+    transition: color .12s;
+  }
+
+  &:hover > .__iconspacer { color: var(--us-rail-text-hi); }
+
+  &[aria-expanded="true"],
+  &.active-menu-title {
+    color: var(--us-rail-text-hi);
+    > .__iconspacer { color: var(--us-accent); }
+  }
+}
+
+// second level
+#mainmenu > div > div.collapse > a.list-group-item {
+  padding-left: 44px;
+  color: var(--us-rail-text-2);
+  font-size: 13.5px;
+
+  &:hover, &:focus { color: var(--us-rail-text-hi); }
+  &[aria-expanded="true"],
+  &.active-menu-title { color: var(--us-rail-text); }
+}
+
+// third level (core inline <style> forces padding-left: 54px !important)
+#mainmenu a.list-group-item.menu-level-3-item {
+  padding-left: 56px !important;
+  font-size: 13px;
+  color: var(--us-rail-text-2);
+  &:hover, &:focus { color: var(--us-rail-text-hi); }
+}
+
+// the current page
+#mainmenu .list-group-item.active,
+#mainmenu .active-menu .list-group-item.active,
+#mainmenu .active-menu-title.active {
+  background: var(--us-rail-active);
+  color: var(--us-rail-text-hi);
+  font-weight: 500;
+
+  &::before { width: 3px; }
+  &:hover { background: var(--us-rail-active); }
+}
+
+// core decorates every item of the open section; keep that neutral
+#mainmenu .active-menu a,
+#mainmenu .active-menu-title {
+  background-color: transparent;
+  &::before { background: var(--us-accent); }
+}
+#mainmenu .active-menu a:not(.active)::before,
+#mainmenu .active-menu-title:not(.active)::before { width: 0; }
+#mainmenu .active-menu a:not(.active):hover { background: var(--us-rail-hover); }
+
+// guide line along an open sub-menu (expanded rail only)
+#navigation:not(.col-sidebar-left) #mainmenu > div > div.collapse {
+  position: relative;
+  margin: 0;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 22px;
+    width: 1px;
+    background: var(--us-rail-line);
+    pointer-events: none;
+  }
+}
+
+// ------------------------------------------------------- collapsed rail
+#navigation.col-sidebar-left {
+  > div.row > nav.page-side-nav {
+    padding: 6px 0 24px;
+    border-right: 0;
+    background: var(--us-rail);
+  }
+
+  > div > nav > #mainmenu > div > a.list-group-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: $us-rail-item-h;
+    height: $us-rail-item-h;
+    margin: 3px 6px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: var(--us-radius);
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1.15;
+    text-align: center;
+
+    > span.fa,
+    > span.fa-solid,
+    > span.glyphicon,
+    > span.__iconspacer {
+      width: auto;
+      height: auto;
+      margin: 0;
+      padding: 0;
+      font-size: 18px;
+    }
+
+    > span:last-child {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &::before { display: none; }
+
+    &[aria-expanded="true"] { background: var(--us-rail-hover); }
+  }
+
+  // fly-out panels
+  > div > nav > #mainmenu > div > div.collapse.in,
+  > div > nav > #mainmenu > div > div.collapse.in > div.collapse.in {
+    padding: 4px;
+    border: 1px solid var(--us-rail-line);
+    border-radius: var(--us-radius-sm);
+    background: var(--us-rail-2);
+    box-shadow: var(--us-shadow-pop);
+  }
+
+  > div > nav > #mainmenu > div > div.collapse.in {
+    margin-top: -($us-rail-item-h + 3px);
+  }
+
+  > div > nav > #mainmenu > div > div.collapse.in > div.collapse.in {
+    margin-top: -($us-fly-item-h + 5px);
+  }
+
+  > div > nav > #mainmenu > div > div.collapse.in > a.list-group-item,
+  > div > nav > #mainmenu > div > div.collapse.in > div.collapse.in > a.list-group-item {
+    height: $us-fly-item-h;
+    margin: 0;
+    padding: 5px 10px !important;
+    border-radius: var(--us-radius-xs);
+    background-color: transparent !important;
+    color: var(--us-rail-text);
+    font-size: 13px !important;
+    line-height: 20px;
+
+    &:hover, &:focus { background-color: var(--us-rail-hover) !important; color: var(--us-rail-text-hi); }
+    &.active { background-color: var(--us-rail-active) !important; color: var(--us-rail-text-hi); }
+    &::before { display: none; }
+  }
+}
+
+// ----------------------------------------------------- phone drawer (<768)
+@media (max-width: 767px) {
+  #navigation.page-side.collapse.in {
+    box-shadow: var(--us-shadow-pop);
+  }
+  #navigation .page-side-nav { padding-bottom: 40px; }
+}

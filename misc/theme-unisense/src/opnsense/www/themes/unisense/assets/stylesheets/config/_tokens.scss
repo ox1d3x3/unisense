@@ -1,0 +1,167 @@
+// ---------------------------------------------------------------------------
+// UniSense design tokens.
+//
+// Light values live on :root. Dark values apply when
+//   * <html data-us-theme="dark">  (forced by the user), or
+//   * the OS prefers dark and the user has not forced light (auto mode).
+// theme.js only ever sets/removes data-us-theme; with JavaScript disabled the
+// theme still follows the operating system.
+// ---------------------------------------------------------------------------
+
+@mixin us-tokens-light {
+  color-scheme: light;
+
+  --us-bg:            #f4f5f6;
+  --us-surface:       #ffffff;
+  --us-surface-2:     #f9fafa;
+  --us-surface-3:     #f1f3f5;
+  --us-surface-hover: #f4f6f8;
+  --us-topbar:        rgba(255, 255, 255, .86);
+
+  --us-text:          #1c1e21;
+  --us-text-2:        #50565e;
+  --us-text-3:        #808893;
+  --us-heading:       #14161a;
+
+  --us-line:          #e3e6e9;
+  --us-line-2:        #eef0f1;
+  --us-line-strong:   #cfd4d9;
+
+  --us-input-bg:      #ffffff;
+  --us-input-border:  #d5d9de;
+  --us-input-disabled:#f1f3f5;
+
+  --us-ok-text:       #1a8d3e;
+  --us-warn-text:     #a8690a;
+  --us-crit-text:     #d1262a;
+  --us-info-text:     var(--us-accent-strong);
+
+  --us-ok-soft:       rgba(56, 204, 101, .14);
+  --us-warn-soft:     rgba(245, 166, 35, .16);
+  --us-crit-soft:     rgba(240, 56, 59, .12);
+  --us-info-soft:     var(--us-accent-soft);
+  --us-neutral-soft:  rgba(80, 86, 94, .10);
+
+  --us-accent-soft:   color-mix(in srgb, var(--us-accent) 12%, transparent);
+  --us-accent-strong: color-mix(in srgb, var(--us-accent), #000 12%);
+
+  --us-code-bg:       #f1f3f5;
+  --us-code-text:     #c4314b;
+  --us-overlay:       rgba(16, 20, 26, .45);
+  --us-tooltip-bg:    #1c1e21;
+  --us-tooltip-text:  #f4f5f6;
+
+  --us-scroll:        #c8ccd1;
+  --us-scroll-hover:  #aeb3b9;
+
+  --us-shadow-1:      0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
+  --us-shadow-2:      0 4px 12px rgba(16, 24, 40, .10), 0 2px 4px rgba(16, 24, 40, .06);
+  --us-shadow-pop:    0 10px 30px rgba(16, 24, 40, .16), 0 2px 6px rgba(16, 24, 40, .08);
+}
+
+@mixin us-tokens-dark {
+  color-scheme: dark;
+
+  --us-bg:            #131416;
+  --us-surface:       #1c1e21;
+  --us-surface-2:     #222428;
+  --us-surface-3:     #26292e;
+  --us-surface-hover: #24272b;
+  --us-topbar:        rgba(19, 20, 22, .86);
+
+  --us-text:          #eef0f1;
+  --us-text-2:        #b7bcc2;
+  --us-text-3:        #858d97;
+  --us-heading:       #f7f8f9;
+
+  --us-line:          #2c2f34;
+  --us-line-2:        #25282c;
+  --us-line-strong:   #3a3e44;
+
+  --us-input-bg:      #222428;
+  --us-input-border:  #363a40;
+  --us-input-disabled:#1a1c1f;
+
+  --us-ok-text:       #4fd97a;
+  --us-warn-text:     #f7b84b;
+  --us-crit-text:     #ff6b6e;
+  --us-info-text:     var(--us-accent-strong);
+
+  --us-ok-soft:       rgba(56, 204, 101, .16);
+  --us-warn-soft:     rgba(245, 166, 35, .16);
+  --us-crit-soft:     rgba(240, 56, 59, .18);
+  --us-info-soft:     var(--us-accent-soft);
+  --us-neutral-soft:  rgba(183, 188, 194, .12);
+
+  --us-accent-soft:   color-mix(in srgb, var(--us-accent) 20%, transparent);
+  --us-accent-strong: color-mix(in srgb, var(--us-accent), #fff 22%);
+
+  --us-code-bg:       #26292e;
+  --us-code-text:     #ff8fa3;
+  --us-overlay:       rgba(0, 0, 0, .6);
+  --us-tooltip-bg:    #eef0f1;
+  --us-tooltip-text:  #131416;
+
+  --us-scroll:        #3a3e44;
+  --us-scroll-hover:  #4a4f57;
+
+  --us-shadow-1:      0 1px 2px rgba(0, 0, 0, .35), 0 1px 3px rgba(0, 0, 0, .25);
+  --us-shadow-2:      0 4px 12px rgba(0, 0, 0, .45), 0 2px 4px rgba(0, 0, 0, .3);
+  --us-shadow-pop:    0 12px 34px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .35);
+}
+
+// Mode-independent tokens.
+@mixin us-tokens-common {
+  --us-accent:        #006fff;
+  --us-accent-hover:  color-mix(in srgb, var(--us-accent), #000 12%);
+  --us-on-accent:     #ffffff;
+
+  --us-ok:            #38cc65;
+  --us-warn:          #f5a623;
+  --us-crit:          #f0383b;
+  // solid fills that carry white text (buttons, labels): darker for contrast
+  --us-ok-strong:     #1fa74d;
+  --us-warn-strong:   #d48806;
+
+  // the navigation rail stays dark in both modes (UniFi OS style)
+  --us-rail:          #16181c;
+  --us-rail-2:        #1d2025;
+  --us-rail-hover:    #26292e;
+  --us-rail-active:   color-mix(in srgb, var(--us-accent) 20%, transparent);
+  --us-rail-text:     #c2c6cb;
+  --us-rail-text-2:   #8a929c;
+  --us-rail-text-hi:  #ffffff;
+  --us-rail-line:     rgba(255, 255, 255, .07);
+
+  // chart palette (theme.js maps core widget colours onto these)
+  --us-chart-1:       var(--us-accent);
+  --us-chart-2:       color-mix(in srgb, var(--us-accent) 45%, var(--us-surface));
+  --us-chart-track:   var(--us-line);
+
+  --us-radius:        12px;
+  --us-radius-sm:     8px;
+  --us-radius-xs:     6px;
+  --us-rail-w:        248px;
+  --us-rail-w-min:    70px;   // fixed by core opnsense_theme.js
+  --us-top-h:         56px;
+
+  --us-font:          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --us-mono:          ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --us-ease:          cubic-bezier(.4, 0, .2, 1);
+}
+
+@mixin us-emit-tokens {
+  :root {
+    @include us-tokens-common;
+    @include us-tokens-light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-us-theme="light"]) { @include us-tokens-dark; }
+  }
+  :root[data-us-theme="dark"] { @include us-tokens-dark; }
+  // dark rail: also in dark during dark mode
+  :root[data-us-theme="dark"] { --us-rail: #0f1113; --us-rail-2: #16181b; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-us-theme="light"]) { --us-rail: #0f1113; --us-rail-2: #16181b; }
+  }
+}

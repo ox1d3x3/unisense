@@ -1,0 +1,21 @@
+// Core OPNsense colour map, expressed as UniSense tokens (see _tokens.scss).
+@import "compat";
+
+$colors: (
+  brand-primary: var(--us-accent),
+  content-background: var(--us-bg),
+  body-background: var(--us-bg),
+  navbar-default-color: var(--us-text),
+  page-content-head-background: var(--us-bg),
+  page-foot-background: var(--us-bg),
+  table-bg-accent: var(--us-surface-2),
+  login-modal-head-background: var(--us-surface),
+  navbar-default-bg: var(--us-topbar),
+  list-group-link-color: var(--us-rail-text),
+  text-color: var(--us-text),
+  border-default: var(--us-line),
+  dashboard-widget-error: var(--us-crit-text),
+  border-highlight: var(--us-line-strong),
+  chip-background: var(--us-accent-soft),
+  chip-text: var(--us-accent-strong),
+);

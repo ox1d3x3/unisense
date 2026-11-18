@@ -1,0 +1,88 @@
+// ---------------------------------------------------------------------------
+// UniSense — Sass colour-function shims.
+//
+// Every colour in this theme is a CSS custom property (var(--us-*)) so that one
+// compiled stylesheet serves light, dark and auto mode. Bootstrap 3's Sass runs
+// colour maths (darken(), rgba(), ...) at compile time, which cannot work on a
+// var(). These shims keep the real Sass behaviour for literal colours and emit
+// an equivalent runtime CSS color-mix() expression for custom properties.
+// ---------------------------------------------------------------------------
+@use "sass:color";
+@use "sass:math";
+@use "sass:meta";
+@use "sass:string";
+
+@function us-is-var($c) {
+  @return meta.type-of($c) == string and string.index("#{$c}", "var(") == 1
+       or meta.type-of($c) == string and string.index("#{$c}", "color-mix(") == 1;
+}
+
+@function us-pct($n) {
+  @if math.is-unitless($n) { @return $n * 1%; }
+  @return $n;
+}
+
+@function us-is-clear($c) {
+  @return meta.type-of($c) == color and color.alpha($c) == 0;
+}
+
+@function darken($c, $amount) {
+  @if us-is-clear($c) { @return $c; }
+  @if us-is-var($c) { @return string.unquote("color-mix(in srgb, #{$c}, #000 #{us-pct($amount)})"); }
+  @return color.adjust($c, $lightness: -$amount);
+}
+
+@function lighten($c, $amount) {
+  @if us-is-clear($c) { @return $c; }
+  @if us-is-var($c) { @return string.unquote("color-mix(in srgb, #{$c}, #fff #{us-pct($amount)})"); }
+  @return color.adjust($c, $lightness: $amount);
+}
+
+@function transparentize($c, $amount) {
+  @if us-is-var($c) {
+    $keep: math.max(0%, 100% - math.percentage($amount));
+    @return string.unquote("color-mix(in srgb, #{$c} #{$keep}, transparent)");
+  }
+  @return color.adjust($c, $alpha: -$amount);
+}
+@function fade-out($c, $amount) { @return transparentize($c, $amount); }
+
+@function adjust-hue($c, $deg) {
+  @if us-is-var($c) { @return $c; }
+  @return color.adjust($c, $hue: $deg);
+}
+
+@function mix($a, $b, $weight: 50%) {
+  @if us-is-var($a) or us-is-var($b) {
+    @return string.unquote("color-mix(in srgb, #{$a} #{$weight}, #{$b})");
+  }
+  @return color.mix($a, $b, $weight);
+}
+
+// Only used by IE "filter: progid" gradient fallbacks; harmless either way.
+@function ie-hex-str($c) {
+  @if us-is-var($c) { @return "#00000000"; }
+  @return color.ie-hex-str($c);
+}
+
+// rgba($color, $alpha) — two-argument Sass form. Four-argument rgba() stays plain CSS.
+@function us-alpha($c, $a) {
+  @if us-is-var($c) {
+    @return string.unquote("color-mix(in srgb, #{$c} #{math.percentage($a)}, transparent)");
+  }
+  @return color.change($c, $alpha: $a);
+}
+
+@function rgba($args...) {
+  @if length($args) == 2 { @return us-alpha(nth($args, 1), nth($args, 2)); }
+  @if length($args) == 4 {
+    @return color.change(rgb(nth($args, 1), nth($args, 2), nth($args, 3)), $alpha: nth($args, 4));
+  }
+  @return string.unquote("rgba(#{$args})");
+}
+
+@function fade-in($c, $amount) {
+  @if us-is-var($c) { @return $c; }
+  @return color.adjust($c, $alpha: $amount);
+}
+@function opacify($c, $amount) { @return fade-in($c, $amount); }

@@ -1,0 +1,57 @@
+// ===========================================================================
+// UniSense — small screens
+// ===========================================================================
+
+@media (max-width: 767px) {
+  .page-content-head {
+    padding-top: 16px;
+    > .container-fluid { padding-left: 14px; padding-right: 14px; }
+    h1 { font-size: 19px; }
+  }
+
+  .page-content-main > .container-fluid {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .content-box { border-radius: var(--us-radius-sm); }
+
+  .nav-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    &::-webkit-scrollbar { display: none; }
+    > li { flex: 0 0 auto; }
+    > li > a { white-space: nowrap; }
+  }
+
+  .modal-dialog { margin: 10px; }
+  .modal-header .form-search { display: none; }
+
+  .page-foot { padding: 8px 0; }
+}
+
+@media print {
+  .page-head, #navigation, .page-foot, .us-appearance { display: none !important; }
+  main.page-content { left: 0 !important; width: 100% !important; padding: 0 !important; }
+  .content-box { box-shadow: none; border-color: #ccc; }
+}
+
+// legacy form tables: stack label above field on phones
+@media (max-width: 767px) {
+  .opnsense_standard_table_form {
+    > tbody > tr > td,
+    > tr > td {
+      display: block;
+      width: auto !important;
+      border-top: 0;
+    }
+    > tbody > tr > td:first-child { padding-bottom: 2px; }
+    > tbody > tr > td + td { padding-top: 4px; text-align: left !important; }
+    > tbody > tr { border-top: 1px solid var(--us-line-2); }
+    > tbody > tr:first-child { border-top: 0; }
+    input[size] { width: 100%; }
+  }
+}

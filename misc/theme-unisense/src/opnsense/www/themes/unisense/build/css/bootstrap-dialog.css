@@ -1,0 +1,122 @@
+/* UniSense for OPNsense — generated from assets/stylesheets, do not edit. */
+.modal-backdrop {
+  z-index: -1;
+}
+
+.bootstrap-dialog .modal-header {
+  border-top-left-radius: 13px;
+  border-top-right-radius: 13px;
+  background-color: var(--us-surface);
+}
+.bootstrap-dialog .bootstrap-dialog-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--us-heading);
+  font-size: 17px;
+  font-weight: 600;
+}
+.bootstrap-dialog .bootstrap-dialog-button-icon {
+  margin-right: 3px;
+}
+.bootstrap-dialog .bootstrap-dialog-close-button {
+  float: right;
+  opacity: 0.9;
+}
+.bootstrap-dialog .bootstrap-dialog-close-button:hover {
+  cursor: pointer;
+  opacity: 1;
+}
+.bootstrap-dialog .bootstrap-dialog-message {
+  color: var(--us-text);
+  word-wrap: break-word;
+}
+.bootstrap-dialog {
+  /* dialog types: neutral header, coloured status dot before the title */
+}
+.bootstrap-dialog.type-info .bootstrap-dialog-title::before, .bootstrap-dialog.type-primary .bootstrap-dialog-title::before, .bootstrap-dialog.type-success .bootstrap-dialog-title::before, .bootstrap-dialog.type-warning .bootstrap-dialog-title::before, .bootstrap-dialog.type-danger .bootstrap-dialog-title::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--us-accent);
+  box-shadow: 0 0 0 4px var(--us-accent-soft);
+}
+.bootstrap-dialog.type-success .bootstrap-dialog-title::before {
+  background: var(--us-ok);
+  box-shadow: 0 0 0 4px var(--us-ok-soft);
+}
+.bootstrap-dialog.type-warning .bootstrap-dialog-title::before {
+  background: var(--us-warn);
+  box-shadow: 0 0 0 4px var(--us-warn-soft);
+}
+.bootstrap-dialog.type-danger .bootstrap-dialog-title::before {
+  background: var(--us-crit);
+  box-shadow: 0 0 0 4px var(--us-crit-soft);
+}
+.bootstrap-dialog.size-large .bootstrap-dialog-title {
+  font-size: 24px;
+}
+.bootstrap-dialog.size-large .bootstrap-dialog-close-button {
+  font-size: 30px;
+}
+.bootstrap-dialog.size-large .bootstrap-dialog-message {
+  font-size: 18px;
+}
+.bootstrap-dialog {
+  /**
+   * Icon animation
+   * Copied from font-awesome: http://fontawesome.io/
+   **/
+}
+.bootstrap-dialog .icon-spin {
+  display: inline-block;
+  -moz-animation: spin 2s infinite linear;
+  -o-animation: spin 2s infinite linear;
+  -webkit-animation: spin 2s infinite linear;
+  animation: spin 2s infinite linear;
+}
+@-moz-keyframes spin {
+  0% {
+    -moz-transform: rotate(0deg);
+  }
+  100% {
+    -moz-transform: rotate(359deg);
+  }
+}
+@-webkit-keyframes spin {
+  0% {
+    -webkit-transform: rotate(0deg);
+  }
+  100% {
+    -webkit-transform: rotate(359deg);
+  }
+}
+@-o-keyframes spin {
+  0% {
+    -o-transform: rotate(0deg);
+  }
+  100% {
+    -o-transform: rotate(359deg);
+  }
+}
+@-ms-keyframes spin {
+  0% {
+    -ms-transform: rotate(0deg);
+  }
+  100% {
+    -ms-transform: rotate(359deg);
+  }
+}
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(359deg);
+  }
+}
+.bootstrap-dialog {
+  /** End of icon animation **/
+}

@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Compiled CSS is up to date
+        run: node scripts/build.mjs --check
+      - name: Lint stylesheets and theme.js
+        run: node scripts/lint.mjs
+      - name: Lint shell scripts
+        run: |
+          sudo apt-get install -y shellcheck >/dev/null
+          shellcheck -s sh install.sh scripts/package.sh
+      - name: Installer round trip
+        run: |
+          set -eu
+          T=$(mktemp -d)
+          mkdir -p "$T/usr/local/opnsense/www/themes" "$T/conf"
+          touch "$T/usr/local/opnsense/www/index.php"
+          echo '<opnsense><theme>opnsense</theme></opnsense>' > "$T/conf/config.xml"
+          export UNISENSE_PREFIX="$T"
+          sh install.sh --local .
+          test -s "$T/usr/local/opnsense/www/themes/unisense/build/css/main.css"
+          sh install.sh --status
+          sh install.sh --local .   # reinstall
+          sed -i 's/>opnsense</>unisense</' "$T/conf/config.xml"
+          if sh install.sh --uninstall; then echo "should refuse while active"; exit 1; fi
+          sh install.sh --uninstall --force
+          test ! -e "$T/usr/local/opnsense/www/themes/unisense"
+      - name: Package
+        run: sh scripts/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unisense-dist
+          path: dist/
+
+  visual:
+    name: Render & test (OPNsense ${{ matrix.core }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ['26.7', '26.1', '25.7']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch OPNsense core ${{ matrix.core }}
+        run: |
+          git clone -q --depth 1 --branch "stable/${{ matrix.core }}" --filter=blob:none --sparse \
+            https://github.com/opnsense/core "$RUNNER_TEMP/core"
+          git -C "$RUNNER_TEMP/core" sparse-checkout set --no-cone \
+            '/src/opnsense/www/' '/src/opnsense/mvc/app/views/' '/src/opnsense/mvc/app/controllers/' \
+            '/src/opnsense/mvc/app/models/' '/src/www/*.inc'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test tools
+        run: |
+          pip install -r tests/harness/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Render pages
+        working-directory: tests/harness
+        run: python render.py --core "$RUNNER_TEMP/core"
+      - name: Screenshots (fails on JS errors / missing files)
+        working-directory: tests/harness
+        run: python shoot.py --core "$RUNNER_TEMP/core" --extra collapsed,dialog,appearance
+      - name: Interaction checks
+        working-directory: tests/harness
+        run: python interact.py --core "$RUNNER_TEMP/core"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-${{ matrix.core }}
+          path: tests/harness/shots/
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, visual]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: unisense-dist
+          path: dist
+      - name: Check version matches tag
+        run: |
+          v="$(cat misc/theme-unisense/src/opnsense/www/themes/unisense/VERSION)"
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "VERSION ($v) does not match tag (${GITHUB_REF_NAME})"; exit 1; }
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=".github/release-notes/${GITHUB_REF_NAME#v}.md"
+          [ -f "$notes" ] || notes=/dev/null
+          gh release create "$GITHUB_REF_NAME" dist/unisense.tar.gz dist/install.sh dist/SHA256SUMS \
+            --title "UniSense ${GITHUB_REF_NAME#v}" --notes-file "$notes"

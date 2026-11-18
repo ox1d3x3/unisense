@@ -1,0 +1,90 @@
+// ===========================================================================
+// UniSense — base: typography, links, scrollbars, selection, transitions
+// ===========================================================================
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  background-color: var(--us-bg);
+}
+
+body {
+  color: var(--us-text);
+  font-family: var(--us-font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  font-family: var(--us-font);
+  color: var(--us-heading);
+  font-weight: 600;
+  letter-spacing: -.005em;
+}
+
+b, strong { font-weight: 600; }
+
+a {
+  color: var(--us-accent);
+  &:hover, &:focus { color: var(--us-accent-hover); }
+}
+
+::selection { background: var(--us-accent-soft); }
+
+:focus-visible {
+  outline: 2px solid var(--us-accent);
+  outline-offset: 2px;
+}
+
+hr { border-top-color: var(--us-line); }
+
+small, .small { color: inherit; }
+
+code, kbd, pre, samp { font-family: var(--us-mono); }
+code { border-radius: 5px; padding: 1px 5px; }
+pre {
+  border: 1px solid var(--us-line);
+  border-radius: 10px;
+  color: var(--us-text);
+  background: var(--us-code-bg);
+}
+
+// slim, theme-aware scrollbars (replaces the core square scrollbar)
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--us-scroll) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-track { background: transparent; box-shadow: none; }
+::-webkit-scrollbar-thumb {
+  background: var(--us-scroll);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--us-scroll-hover);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
+
+// smooth colour changes when switching mode (enabled by theme.js after load)
+html.us-ready body,
+html.us-ready .page-head .navbar,
+html.us-ready .content-box,
+html.us-ready .grid-stack-item-content {
+  transition: background-color .2s var(--us-ease), border-color .2s var(--us-ease), color .2s var(--us-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.us-ready * { transition: none !important; }
+}

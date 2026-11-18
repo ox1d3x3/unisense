@@ -1,0 +1,43 @@
+<!doctype html>
+{# Mirrors display_login_form() in src/www/authgui.inc #}
+{% macro themed(u) %}{{ theme_file_or_default(u, 'unisense') }}{% endmacro %}
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+    <title>Login | OPNsense</title>
+    <link href="{{ themed('/css/main.css') }}" rel="stylesheet">
+    <link href="{{ themed('/images/favicon.png') }}" rel="shortcut icon">
+    <script src="/ui/js/jquery-3.5.1.min.js"></script>
+    <script src="{{ themed('/js/theme.js') }}"></script>
+  </head>
+  <body class="page-login">
+  <div class="container">
+    <main class="login-modal-container">
+      <header class="login-modal-head" style="height:50px;">
+        <div class="navbar-brand">
+          <img src="{{ themed('/images/default-logo.svg') }}" height="30" alt="logo" />
+        </div>
+      </header>
+      <div class="login-modal-content">
+        <div id="inputerrors" class="text-danger">&nbsp;</div><br />
+        <form class="clearfix" id="iform" name="iform" method="post" autocomplete="off">
+          <div class="form-group">
+            <label for="usernamefld">Username:</label>
+            <input id="usernamefld" type="text" name="usernamefld" class="form-control user" tabindex="1" autofocus="autofocus" />
+          </div>
+          <div class="form-group">
+            <label for="passwordfld">Password:</label>
+            <input id="passwordfld" type="password" name="passwordfld" class="form-control pwd" tabindex="2" />
+          </div>
+          <button type="submit" name="login" value="1" class="btn btn-primary pull-right">Login</button>
+        </form>
+      </div>
+    </main>
+    <div class="login-foot text-center">
+      <a target="_blank" href="https://opnsense.org/">OPNsense</a> (c) 2014-2026
+      <a target="_blank" href="https://www.deciso.com/">Deciso B.V.</a>
+    </div>
+  </div>
+  </body>
+</html>

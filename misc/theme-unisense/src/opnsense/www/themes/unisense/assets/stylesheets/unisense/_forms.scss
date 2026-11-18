@@ -1,0 +1,187 @@
+// ===========================================================================
+// UniSense — form controls
+//
+// MVC pages use .form-control; legacy PHP pages use bare <input>/<select>/
+// <textarea>. Both get the same look. Widgets that draw their own inputs
+// (tokenize2, bootstrap-select, Tabulator) are excluded.
+// ===========================================================================
+
+@mixin us-input {
+  height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--us-input-border);
+  border-radius: var(--us-radius-sm);
+  background-color: var(--us-input-bg);
+  color: var(--us-text);
+  font-size: 14px;
+  line-height: 20px;
+  box-shadow: none;
+  transition: border-color .15s var(--us-ease), box-shadow .15s var(--us-ease), background-color .15s;
+
+  &::placeholder { color: var(--us-text-3); opacity: 1; }
+
+  &:hover:not(:disabled):not([readonly]) { border-color: var(--us-line-strong); }
+
+  &:focus {
+    border-color: var(--us-accent);
+    outline: 0;
+    box-shadow: 0 0 0 3px var(--us-accent-soft);
+  }
+
+  &:disabled,
+  &[disabled],
+  &[readonly],
+  fieldset[disabled] & {
+    background-color: var(--us-input-disabled);
+    color: var(--us-text-2);
+    opacity: 1;
+  }
+  &:disabled { cursor: not-allowed; }
+}
+
+.form-control { @include us-input; }
+
+textarea.form-control { height: auto; min-height: 72px; }
+select.form-control { padding-right: 30px; }
+
+// legacy pages and dialogs: un-classed native controls
+:where(.page-content-main, .modal, .login-modal-content)
+  :is(
+    input:not([type]),
+    input[type="text"], input[type="password"], input[type="number"], input[type="email"],
+    input[type="url"], input[type="search"], input[type="tel"], input[type="date"],
+    input[type="time"], input[type="datetime-local"], input[type="month"], input[type="week"]
+  ):not(.form-control):not(:where(.tokenize *, .tabulator *, .bootstrap-select *, .bs-searchbox *, .datepicker *)),
+:where(.page-content-main, .modal) select:not(.form-control):not(.selectpicker):not(:where(.bootstrap-select *, .tabulator *)),
+:where(.page-content-main, .modal) textarea:not(.form-control):not(:where(.tabulator *)) {
+  @include us-input;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+:where(.page-content-main, .modal) textarea:not(.form-control):not(:where(.tabulator *)) {
+  height: auto;
+  min-height: 72px;
+  font-family: var(--us-mono);
+  font-size: 13px;
+}
+
+:where(.page-content-main, .modal) select:not(.form-control):not(.selectpicker):not(:where(.bootstrap-select *, .tabulator *)) {
+  padding-right: 30px;
+}
+
+// native select caret (core sets the image with !important on every select)
+select {
+  border-color: var(--us-input-border);
+  background-color: var(--us-input-bg);
+  color: var(--us-text);
+}
+select[multiple],
+select[size]:not([size="1"]) {
+  height: auto;
+  padding-right: 11px;
+  background-image: none !important;
+}
+select option { background-color: var(--us-surface); color: var(--us-text); }
+
+// checkboxes, radios, ranges: native controls in the accent colour
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0 6px 0 0;
+  vertical-align: -3px;
+  accent-color: var(--us-accent);
+  cursor: pointer;
+}
+label > input[type="checkbox"],
+label > input[type="radio"] { margin-top: 2px; }
+
+input[type="range"] { accent-color: var(--us-accent); }
+progress { accent-color: var(--us-accent); }
+
+input[type="file"] {
+  max-width: 100%;
+  color: var(--us-text-2);
+  font-size: 13px;
+
+  &::file-selector-button {
+    margin-right: 10px;
+    padding: 6px 12px;
+    border: 1px solid var(--us-input-border);
+    border-radius: var(--us-radius-sm);
+    background: var(--us-surface);
+    color: var(--us-text);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  &::file-selector-button:hover { background: var(--us-surface-hover); }
+}
+
+input[type="color"] {
+  width: 44px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--us-input-border);
+  border-radius: var(--us-radius-xs);
+  background: var(--us-input-bg);
+}
+
+label {
+  color: var(--us-text);
+  font-weight: 500;
+}
+
+legend {
+  color: var(--us-heading);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.help-block { color: var(--us-text-3); }
+
+// validation states
+.has-error {
+  .help-block, .control-label, .radio, .checkbox, &.radio label, &.checkbox label { color: var(--us-crit-text); }
+  .form-control,
+  .tokenize > .tokens-container,
+  .bootstrap-select > .dropdown-toggle { border-color: var(--us-crit) !important; box-shadow: none; }
+  .form-control:focus { box-shadow: 0 0 0 3px var(--us-crit-soft); }
+  .input-group-addon { border-color: var(--us-crit); background: var(--us-crit-soft); color: var(--us-crit-text); }
+}
+.has-warning {
+  .help-block, .control-label { color: var(--us-warn-text); }
+  .form-control { border-color: var(--us-warn); box-shadow: none; }
+}
+.has-success {
+  .help-block, .control-label { color: var(--us-ok-text); }
+  .form-control { border-color: var(--us-ok); box-shadow: none; }
+}
+
+// input groups
+.input-group-addon {
+  border-color: var(--us-input-border);
+  border-radius: var(--us-radius-sm);
+  background-color: var(--us-surface-3);
+  color: var(--us-text-2);
+}
+.input-group .form-control:first-child,
+.input-group-addon:first-child,
+.input-group-btn:first-child > .btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.input-group .form-control:last-child,
+.input-group-addon:last-child,
+.input-group-btn:last-child > .btn { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+// dialog search box (base_dialog.volt)
+.form-search .input-group-addon { background: var(--us-input-bg); border-right: 0; color: var(--us-text-3); }
+.form-search .form-control { border-left: 0; }
+
+// sizes
+.input-sm, .form-group-sm .form-control { height: 30px; padding: 4px 9px; font-size: 13px; border-radius: var(--us-radius-xs); }
+.input-lg, .form-group-lg .form-control { height: 44px; font-size: 16px; border-radius: var(--us-radius); }
+
+.form-inline .form-control { vertical-align: middle; }
+
+fieldset[disabled] .btn,
+.btn[disabled] { opacity: .5; box-shadow: none; }

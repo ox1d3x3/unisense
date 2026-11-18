@@ -1,0 +1,218 @@
+// ===========================================================================
+// UniSense — content: cards (content-box), tabs, panels, wells, alerts
+// ===========================================================================
+
+// --------------------------------------------------------------- cards
+.content-box {
+  background: var(--us-surface);
+  border: 1px solid var(--us-line);
+  border-radius: var(--us-radius);
+  box-shadow: var(--us-shadow-1);
+  color: var(--us-text);
+
+  // core @extends .page-content-head for the box header; make it a card header
+  .content-box-head,
+  > .content-box-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--us-line);
+    background: transparent;
+    > .container-fluid { padding-left: 0; padding-right: 0; }
+  }
+
+  .content-box-main {
+    padding: 16px;
+  }
+
+  // nested cards inside cards: flatten
+  .content-box {
+    border-radius: var(--us-radius-sm);
+    box-shadow: none;
+  }
+}
+
+div.tab-content.content-box {
+  border-top: 1px solid var(--us-line);
+}
+
+// spacing between stacked cards / sections
+.page-content-main {
+  .content-box + .content-box,
+  .content-box + form,
+  form + .content-box,
+  .content-box + .table-responsive,
+  .content-box + section,
+  .tab-content + .content-box,
+  .content-box + .tab-content { margin-top: 16px; }
+
+  section[class^="col-"] + section[class^="col-"] { padding-top: 16px; }
+
+  .__mb { margin-bottom: 16px; }
+  .__mt { margin-top: 16px; }
+
+  > .container-fluid > .row > section > .content-box,
+  > .container-fluid > .row > .col-xs-12 > .content-box { margin-bottom: 0; }
+}
+
+// the "apply changes" bar (base_apply_button.volt) and similar footers
+.page-content-main .content-box ~ .row,
+.page-content-main .tab-content ~ .col-md-12 {
+  margin-top: 4px;
+}
+
+// ---------------------------------------------------------------- tabs
+.nav-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0 0 16px;
+  padding: 0;
+  border-bottom: 1px solid var(--us-line);
+
+  &::before, &::after { display: none; }
+
+  > li {
+    float: none;
+    margin: 0 0 -1px;
+    border-radius: 0;
+
+    > a,
+    > a:hover,
+    > a:focus {
+      margin: 0;
+      border: 0 !important;
+      border-bottom: 2px solid transparent !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+    }
+
+    > a {
+      padding: 10px 12px 9px;
+      color: var(--us-text-2);
+      font-weight: 500;
+      line-height: 20px;
+      transition: color .12s, border-color .12s;
+    }
+
+    > a:hover,
+    > a:focus { color: var(--us-heading); }
+
+    &.active > a,
+    &.active > a:hover,
+    &.active > a:focus {
+      color: var(--us-heading) !important;
+      border-bottom-color: var(--us-accent) !important;
+    }
+
+    &.disabled > a { color: var(--us-text-3); }
+    &.open > a,
+    &.open > a:hover,
+    &.open > a:focus { color: var(--us-heading); }
+  }
+
+  // core split tabs (label + dropdown caret)
+  > li > a.visible-lg-inline-block:not(.pull-right) { padding-right: 4px !important; }
+  > li > a.visible-lg-inline-block.pull-right { padding-left: 4px !important; }
+
+  .caret { color: var(--us-text-3); }
+}
+
+// tabs inside a card or dialog: tighter
+.content-box .nav-tabs,
+.modal .nav-tabs { margin-bottom: 12px; padding: 0 8px; }
+
+.nav-tabs.nav-justified,
+.nav-tabs-justified {
+  > li { flex: 1 1 0; }
+  > li > a { text-align: center; }
+}
+
+.nav-pills > li > a {
+  border-radius: var(--us-radius-sm);
+  color: var(--us-text-2);
+  font-weight: 500;
+  &:hover { background: var(--us-surface-hover); color: var(--us-heading); }
+}
+.nav-pills > li.active > a,
+.nav-pills > li.active > a:hover,
+.nav-pills > li.active > a:focus {
+  background: var(--us-accent-soft);
+  color: var(--us-accent-strong);
+}
+
+// -------------------------------------------------------------- panels
+.panel {
+  border-radius: var(--us-radius);
+  box-shadow: var(--us-shadow-1);
+}
+.panel-heading {
+  border-top-left-radius: calc(var(--us-radius) - 1px);
+  border-top-right-radius: calc(var(--us-radius) - 1px);
+  padding: 12px 16px;
+}
+.panel-title { font-size: 15px; font-weight: 600; }
+.panel-body { padding: 16px; }
+.panel-footer {
+  border-bottom-left-radius: calc(var(--us-radius) - 1px);
+  border-bottom-right-radius: calc(var(--us-radius) - 1px);
+}
+.panel-group .panel { border-radius: var(--us-radius); }
+
+// --------------------------------------------------------------- wells
+.well {
+  border: 1px solid var(--us-line);
+  border-radius: var(--us-radius-sm);
+  background: var(--us-surface-2);
+  box-shadow: none;
+}
+
+// -------------------------------------------------------------- alerts
+.alert {
+  position: relative;
+  padding: 12px 16px 12px 18px;
+  border: 1px solid transparent;
+  border-radius: var(--us-radius-sm);
+  color: var(--us-text);
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 7px;
+    width: 3px;
+    border-radius: 3px;
+    background: currentColor;
+    opacity: .9;
+  }
+
+  .alert-link { font-weight: 600; }
+  > p, > ul { color: var(--us-text); }
+  hr { border-top-color: var(--us-line); }
+}
+
+.alert-success { background: var(--us-ok-soft);   border-color: transparent; &::before { background: var(--us-ok); } }
+.alert-info    { background: var(--us-info-soft); border-color: transparent; &::before { background: var(--us-accent); } }
+.alert-warning { background: var(--us-warn-soft); border-color: transparent; &::before { background: var(--us-warn); } }
+.alert-danger  { background: var(--us-crit-soft); border-color: transparent; &::before { background: var(--us-crit); } }
+
+.alert-success, .alert-info, .alert-warning, .alert-danger {
+  color: var(--us-text);
+  .alert-link { color: inherit; text-decoration: underline; }
+}
+
+// status banner injected by opnsense_status.js
+#notification-banner {
+  margin: 0 0 12px;
+  font-weight: 500;
+  &::before { display: none; }
+}
+
+// ---------------------------------------------------- jumbotron / misc
+.jumbotron { border-radius: var(--us-radius); }
+
+.page-header { border-bottom-color: var(--us-line); }
+
+blockquote { border-left-color: var(--us-line); }
+
+.thumbnail { border-radius: var(--us-radius-sm); }

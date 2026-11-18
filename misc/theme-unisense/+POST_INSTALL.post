@@ -1,0 +1,4 @@
+# refresh GUI asset URLs (cache_safe() keys off index.php mtime)
+if [ -f /usr/local/opnsense/www/index.php ]; then
+	touch /usr/local/opnsense/www/index.php
+fi

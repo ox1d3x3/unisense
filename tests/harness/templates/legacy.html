@@ -1,0 +1,210 @@
+<!doctype html>
+{# Mirrors src/www/head.inc + fbegin.inc + foot.inc (legacy PHP pages) #}
+{% macro themed(u) %}{{ theme_file_or_default(u, 'unisense') }}{% endmacro %}
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+    <title>System: Settings: General | opnsense.home.arpa</title>
+    <link rel="stylesheet" type="text/css" href="{{ themed('/css/main.css') }}">
+    <style>
+      .menu-level-3-item { font-size: 90%; padding-left: 54px !important; }
+      .typeahead { overflow: hidden; }
+    </style>
+    <link rel="shortcut icon" href="{{ themed('/images/favicon.png') }}">
+    <script src="/ui/js/polyfills.js"></script>
+    <link rel="stylesheet" type="text/css" href="{{ themed('/css/bootstrap-select.css') }}">
+    <link rel="stylesheet" type="text/css" href="{{ themed('/css/bootstrap-dialog.css') }}">
+    {% if core_has('/css/opnsense-favorites.css') %}<link rel="stylesheet" type="text/css" href="{{ themed('/css/opnsense-favorites.css') }}">{% endif %}
+    <link rel="stylesheet" type="text/css" href="/ui/assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" type="text/css" href="/ui/assets/fontawesome/css/v4-shims.min.css">
+    <link rel="stylesheet" type="text/css" href="{{ themed('/css/nv.d3.css') }}">
+    <link rel="stylesheet" type="text/css" href="{{ themed('/css/bootstrap-datepicker3.min.css') }}">
+    <script src="/ui/js/jquery-3.5.1.min.js"></script>
+    <script src="/ui/js/bootstrap-datepicker.min.js"></script>
+    <script src="/ui/js/d3.min.js"></script>
+    <script src="/ui/js/nv.d3.min.js"></script>
+    <script src="/ui/js/opnsense.js"></script>
+    <script src="/ui/js/opnsense_theme.js"></script>
+    <script src="/ui/js/bootstrap3-typeahead.min.js"></script>
+    <script src="/ui/js/opnsense_status.js"></script>
+    <script src="{{ themed('/js/theme.js') }}"></script>
+    <script>
+    $(document).ready(function () {
+      $('[data-toggle="tooltip"]').tooltip();
+      $("a[class='showhelp']").click(function (event) {
+        $("*[data-for='" + $(this).attr('id') + "']").toggleClass("hidden show");
+        event.preventDefault();
+      });
+      updateSystemStatus();
+    });
+    </script>
+  </head>
+  <body>
+<header class="page-head">
+  <nav class="navbar navbar-default">
+    <div class="container-fluid">
+      <div class="navbar-header">
+        <a class="navbar-brand" href="/index.php">
+        <img class="brand-logo" src="{{ themed('/images/default-logo.svg') }}" height="30" alt="logo" />
+        <img class="brand-icon" src="{{ themed('/images/icon-logo.svg') }}" height="30" alt="icon" />
+        </a>
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navigation">
+          <span class="sr-only">Toggle navigation</span>
+          <span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span>
+        </button>
+      </div>
+      <button class="toggle-sidebar" data-toggle="tooltip right" title="Toggle sidebar" style="display:none"><i class="fa fa-chevron-left"></i></button>
+      <div class="collapse navbar-collapse">
+        <ul class="nav navbar-nav navbar-right">
+          <li id="menu_messages"><span class="navbar-text">root@opnsense.home.arpa</span></li>
+          <li>
+            <span class="navbar-text" style="margin-left: 0">
+              <i id="system_status" data-toggle="tooltip left" title="Show system status" style="cursor:pointer" class="fa fa-circle text-muted"></i>
+            </span>
+          </li>
+          <li>
+            <form class="navbar-form" role="search">
+              <div class="input-group">
+                <div class="input-group-addon"><i class="fa fa-search"></i></div>
+                <input type="text" style="width: 250px;" class="form-control" tabindex="1" data-provide="typeahead" id="menu_search_box" autocomplete="off">
+              </div>
+            </form>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<main class="page-content col-sm-9 col-sm-push-3 col-lg-10 col-lg-push-2">
+  {{ partial("layout_partials/base_menu_system") }}
+  <div class="row">
+    <header class="page-content-head">
+      <div class="container-fluid">
+        <ul class="list-inline">
+          <li><h1 tabindex="-1">System: Settings: General<i class="menu-favorite-star fa fa-star-o" data-menu-url="/system_general.php" data-toggle="tooltip" data-container="body" data-placement="bottom" title="Add Favorite"></i></h1></li>
+          <li class="btn-group-container">
+            <form method="post">
+              <span class="label label-opnsense label-opnsense-sm label-success"><i class="fa fa-play fa-fw"></i></span>
+              <span class="btn btn-sm btn-default"><i class="fa fa-repeat fa-fw"></i></span>
+            </form>
+          </li>
+        </ul>
+      </div>
+    </header>
+
+<section class="page-content-main">
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-xs-12"><div class="alert alert-info" role="alert"><button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>The changes have been applied successfully.</div></div>
+      <div class="col-xs-12"><div class="alert alert-danger" role="alert"><p>The following input errors were detected:</p><ul><li>A valid domain name must be specified.</li></ul></div></div>
+    <section class="col-xs-12">
+      <form method="post" enctype="multipart/form-data">
+        <div class="content-box tab-content __mb">
+          <table class="table table-striped opnsense_standard_table_form">
+            <tr>
+              <td style="width:22%"><strong>System</strong></td>
+              <td style="width:78%; text-align:right">
+                <small>full help </small>
+                <i class="fa fa-toggle-off text-danger" style="cursor: pointer;" id="show_all_help_page"></i>
+              </td>
+            </tr>
+            <tr>
+              <td><a id="help_for_hostname" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> Hostname</td>
+              <td>
+                <input name="hostname" type="text" size="40" value="opnsense" />
+                <div class="hidden" data-for="help_for_hostname">Name of the firewall host, without domain part</div>
+              </td>
+            </tr>
+            <tr>
+              <td><a id="help_for_domain" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> Domain</td>
+              <td>
+                <input name="domain" type="text" value="home.arpa" />
+                <div class="show" data-for="help_for_domain">Do not use 'local' as your internal domain name. <br/>e.g. <em>internal, name.internal</em></div>
+              </td>
+            </tr>
+            <tr>
+              <td><a id="help_for_timezone" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> Time zone</td>
+              <td>
+                <select name="timezone" id="timezone" data-size="10" class="selectpicker" data-style="btn-default" data-live-search="true">
+                  <option>Australia/Perth</option><option>Europe/Amsterdam</option><option>UTC</option>
+                </select>
+              </td>
+            </tr>
+            <tr>
+              <td><i class="fa fa-info-circle text-muted"></i> Language</td>
+              <td>
+                <select name="language" class="form-control"><option>English</option><option>Deutsch</option></select>
+              </td>
+            </tr>
+            <tr>
+              <td><i class="fa fa-info-circle text-muted"></i> Theme</td>
+              <td>
+                <select name="theme" class="selectpicker" data-style="btn-default"><option>opnsense</option><option selected>unisense</option></select>
+              </td>
+            </tr>
+            <tr>
+              <td><i class="fa fa-info-circle text-muted"></i> Notes</td>
+              <td><textarea name="notes" rows="3" cols="65">Multi-line text area</textarea></td>
+            </tr>
+            <tr>
+              <td><i class="fa fa-info-circle text-muted"></i> Options</td>
+              <td>
+                <input name="opt1" type="checkbox" checked="checked" /> Allow DNS server list to be overridden by DHCP/PPP on WAN<br/>
+                <input name="opt2" type="checkbox" /> Do not use the local DNS service as a nameserver<br/>
+                <input name="opt3" type="radio" checked="checked" /> Radio A &nbsp; <input name="opt3" type="radio" /> Radio B
+              </td>
+            </tr>
+          </table>
+        </div>
+        <div class="content-box tab-content __mb">
+          <table class="table table-striped opnsense_standard_table_form">
+            <thead><tr><th colspan="4">Gateways</th></tr></thead>
+            <tr><td><strong>Name</strong></td><td><strong>Interface</strong></td><td><strong>Address</strong></td><td><strong>Status</strong></td></tr>
+            <tr><td>WAN_DHCP</td><td>WAN</td><td>100.64.12.1</td><td><span class="label label-success">Online</span></td></tr>
+            <tr><td>WAN_DHCP6</td><td>WAN</td><td>fe80::1</td><td><span class="label label-danger">Offline</span></td></tr>
+            <tr><td>VPN_GW</td><td>WG0</td><td>10.10.0.1</td><td><span class="label label-warning">Latency</span></td></tr>
+          </table>
+        </div>
+        <div class="content-box tab-content">
+          <table class="table table-striped opnsense_standard_table_form">
+            <tr>
+              <td style="width:22%"></td>
+              <td style="width:78%">
+                <input name="Submit" type="submit" class="btn btn-primary" value="Save" id="save" />
+                <input type="button" class="btn btn-default" value="Cancel" />
+                <button type="button" class="btn btn-danger"><i class="fa fa-trash fa-fw"></i> Delete</button>
+                <button type="button" class="btn btn-success">Apply</button>
+                <button type="button" class="btn btn-warning">Warning</button>
+                <button type="button" class="btn btn-info">Info</button>
+                <button type="button" class="btn btn-link">Link</button>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </form>
+    </section>
+    </div>
+  </div>
+</section>
+    <footer class="page-foot">
+      <div class="container-fluid">
+        <a target="_blank" href="https://opnsense.org/">OPNsense</a> (c) 2014-2026
+        <a target="_blank" href="https://www.deciso.com/">Deciso B.V.</a>
+      </div>
+    </footer>
+  </div>
+</main>
+    <div class="modal fade" id="OPNsenseStdWaitDialog" tabindex="-1" data-backdrop="static" data-keyboard="false">
+      <div class="modal-backdrop fade in"></div>
+      <div class="modal-dialog"><div class="modal-content"><div class="modal-body">
+        <p><strong>Please wait...</strong></p>
+        <div class="progress"><div class="progress-bar progress-bar-info progress-bar-striped active" role="progressbar" style="width:100%"></div></div>
+      </div></div></div>
+    </div>
+    <script src="/ui/js/bootstrap.min.js"></script>
+    <script src="/ui/js/bootstrap-select.min.js"></script>
+    <script src="/ui/js/bootstrap-dialog.min.js"></script>
+  </body>
+</html>

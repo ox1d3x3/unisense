@@ -1,0 +1,293 @@
+// ===========================================================================
+// UniSense — components: buttons, labels, badges, dropdowns, modals,
+// tooltips, popovers, pagination, progress, list groups
+// ===========================================================================
+
+// ------------------------------------------------------------- buttons
+.btn {
+  padding: 7px 14px;
+  border-radius: var(--us-radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  box-shadow: none;
+  transition: background-color .12s, border-color .12s, color .12s, box-shadow .12s;
+
+  &:focus, &.focus, &:active:focus, &.active:focus { outline: 0; }
+  &:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--us-accent-soft); }
+  &:active, &.active { box-shadow: none; }
+
+  .fa + span, span + .fa { margin-left: 2px; }
+}
+
+.btn-sm, .btn-group-sm > .btn { padding: 5px 10px; font-size: 13px; line-height: 18px; border-radius: var(--us-radius-xs); }
+.btn-lg, .btn-group-lg > .btn { padding: 10px 18px; font-size: 16px; border-radius: var(--us-radius); }
+.btn-xs, .btn-group-xs > .btn {
+  padding: 2px 7px;
+  font-size: 12px;
+  line-height: 18px;
+  border-radius: var(--us-radius-xs);
+}
+.label-opnsense-xs { padding: 2px 7px; }
+
+.btn-default {
+  border-color: var(--us-input-border);
+  background-color: var(--us-surface);
+  color: var(--us-text);
+
+  &:hover, &:focus, &.focus {
+    border-color: var(--us-line-strong);
+    background-color: var(--us-surface-hover);
+    color: var(--us-heading);
+  }
+  &:active, &.active, .open > &.dropdown-toggle {
+    border-color: var(--us-line-strong);
+    background-color: var(--us-surface-3);
+    color: var(--us-heading);
+  }
+  .badge { background: var(--us-surface-3); color: var(--us-text-2); }
+}
+
+@mixin us-solid-btn($bg, $fg) {
+  border-color: $bg;
+  background-color: $bg;
+  color: $fg;
+
+  &:hover, &:focus, &.focus,
+  &:active, &.active, .open > &.dropdown-toggle {
+    border-color: color-mix(in srgb, #{$bg}, #000 10%);
+    background-color: color-mix(in srgb, #{$bg}, #000 10%);
+    color: $fg;
+  }
+  &.disabled, &[disabled], fieldset[disabled] & {
+    &, &:hover, &:focus { border-color: $bg; background-color: $bg; color: $fg; }
+  }
+}
+
+.btn-primary { @include us-solid-btn(var(--us-accent), var(--us-on-accent)); }
+.btn-success { @include us-solid-btn(var(--us-ok-strong), #ffffff); }
+.btn-danger  { @include us-solid-btn(var(--us-crit), #ffffff); }
+.btn-warning { @include us-solid-btn(var(--us-warn), #1c1e21); }
+
+.btn-info {
+  border-color: transparent;
+  background-color: var(--us-accent-soft);
+  color: var(--us-accent-strong);
+
+  &:hover, &:focus, &.focus, &:active, &.active, .open > &.dropdown-toggle {
+    border-color: transparent;
+    background-color: color-mix(in srgb, var(--us-accent) 26%, transparent);
+    color: var(--us-accent-strong);
+  }
+}
+
+.btn-link {
+  color: var(--us-accent);
+  font-weight: 500;
+  &:hover, &:focus { color: var(--us-accent-hover); text-decoration: none; }
+}
+
+.btn-group > .btn + .btn,
+.btn-group > .btn + .btn-group,
+.btn-group > .btn-group + .btn { margin-left: -1px; }
+
+.btn .caret { border-top-color: currentColor; }
+
+// glyphicon/font-awesome-only buttons in grids and toolbars
+.btn-default .glyphicon { color: inherit; }
+
+// ----------------------------------------------------- labels & badges
+.label {
+  display: inline-block;
+  padding: .3em .65em;
+  border-radius: var(--us-radius-xs);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: .01em;
+  vertical-align: middle;
+}
+
+.label-default { background-color: var(--us-neutral-soft); color: var(--us-text-2); }
+.label-primary { background-color: var(--us-accent-soft); color: var(--us-accent-strong); }
+.label-success { background-color: var(--us-ok-soft); color: var(--us-ok-text); }
+.label-info    { background-color: var(--us-info-soft); color: var(--us-info-text); }
+.label-warning { background-color: var(--us-warn-soft); color: var(--us-warn-text); }
+.label-danger  { background-color: var(--us-crit-soft); color: var(--us-crit-text); }
+
+a.label:hover, a.label:focus { color: inherit; filter: brightness(1.05); }
+
+// core service status chips (emulate .btn-sm)
+.label-opnsense {
+  border: 1px solid transparent;
+  border-radius: var(--us-radius-xs);
+  font-size: 12px;
+  line-height: 18px;
+}
+.label-opnsense-sm { padding: 5px 10px; }
+
+.badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background-color: var(--us-surface-3);
+  color: var(--us-text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+// ------------------------------------------------------------ dropdowns
+.dropdown-menu {
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid var(--us-line);
+  border-radius: 10px;
+  background-color: var(--us-surface);
+  box-shadow: var(--us-shadow-pop);
+  font-size: 14px;
+
+  > li > a {
+    padding: 6px 10px;
+    border-radius: var(--us-radius-xs);
+    color: var(--us-text);
+    line-height: 20px;
+  }
+  > li > a:hover,
+  > li > a:focus { background-color: var(--us-surface-hover); color: var(--us-heading); }
+
+  > .active > a,
+  > .active > a:hover,
+  > .active > a:focus { background-color: var(--us-accent); color: var(--us-on-accent); }
+
+  > .disabled > a,
+  > .disabled > a:hover { color: var(--us-text-3); }
+
+  .divider { margin: 6px 0; background-color: var(--us-line); }
+}
+
+.dropdown-header {
+  padding: 6px 10px 4px;
+  color: var(--us-text-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+// ------------------------------------------------------------------ modals
+.modal-backdrop,
+.modal-backdrop.in { background-color: #000; }
+.modal-backdrop.in { opacity: .5; }
+
+.modal-content {
+  border: 1px solid var(--us-line);
+  border-radius: 14px;
+  background-color: var(--us-surface);
+  box-shadow: var(--us-shadow-pop);
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--us-line);
+
+  .modal-title {
+    color: var(--us-heading);
+    font-size: 17px;
+    font-weight: 600;
+    small { color: var(--us-text-3); font-weight: 400; }
+  }
+  .model-header-icon { color: var(--us-text-3); }
+}
+
+.modal-body { padding: 20px; }
+
+.modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--us-line);
+  border-bottom-left-radius: 13px;
+  border-bottom-right-radius: 13px;
+  background: var(--us-surface-2);
+}
+
+.close {
+  color: var(--us-text);
+  font-weight: 400;
+  opacity: .55;
+  text-shadow: none;
+  &:hover, &:focus { color: var(--us-heading); opacity: .9; }
+}
+
+// the "please wait" dialog
+#OPNsenseStdWaitDialog .modal-dialog { max-width: 420px; }
+#OPNsenseStdWaitDialog .modal-body { padding: 20px; }
+
+// --------------------------------------------------- tooltips & popovers
+.tooltip { font-family: var(--us-font); font-size: 12px; }
+.tooltip.in { opacity: 1; }
+.tooltip-inner {
+  max-width: 280px;
+  padding: 5px 9px;
+  border-radius: var(--us-radius-xs);
+  background-color: var(--us-tooltip-bg);
+  color: var(--us-tooltip-text);
+  font-weight: 500;
+  box-shadow: var(--us-shadow-2);
+}
+
+.popover {
+  border: 1px solid var(--us-line);
+  border-radius: 10px;
+  background-color: var(--us-surface);
+  color: var(--us-text);
+  box-shadow: var(--us-shadow-pop);
+  font-family: var(--us-font);
+}
+.popover-title {
+  border-bottom: 1px solid var(--us-line);
+  border-radius: 9px 9px 0 0;
+  background-color: var(--us-surface-2);
+  color: var(--us-heading);
+  font-weight: 600;
+}
+
+// ------------------------------------------------------------- pagination
+.pagination {
+  > li > a,
+  > li > span {
+    margin-left: 0;
+    color: var(--us-text-2);
+  }
+  > li:first-child > a, > li:first-child > span { border-radius: var(--us-radius-sm) 0 0 var(--us-radius-sm); }
+  > li:last-child > a, > li:last-child > span { border-radius: 0 var(--us-radius-sm) var(--us-radius-sm) 0; }
+}
+
+// --------------------------------------------------------------- progress
+.progress {
+  height: 18px;
+  border-radius: 999px;
+  background-color: var(--us-surface-3);
+  box-shadow: none;
+}
+.progress-bar {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  box-shadow: none;
+}
+.progress-bar-placeholder { line-height: 18px; color: var(--us-text); }
+
+// --------------------------------------------------------- list groups
+.list-group { border-radius: var(--us-radius-sm); }
+.page-content-main .list-group-item {
+  border-left: 1px solid var(--us-line);
+  border-right: 1px solid var(--us-line);
+  &:first-child { border-top-left-radius: var(--us-radius-sm); border-top-right-radius: var(--us-radius-sm); }
+  &:last-child { border-bottom-left-radius: var(--us-radius-sm); border-bottom-right-radius: var(--us-radius-sm); }
+}
+
+// ------------------------------------------------------ status dialog
+// (opnsense_status.js renders subjects as full-width .btn-default blocks)
+.bootstrap-dialog .modal-body a.btn.btn-default {
+  white-space: normal;
+  h4 { margin: 4px 0 6px; font-size: 15px; }
+  p { color: var(--us-text-2); margin-bottom: 4px; }
+}
