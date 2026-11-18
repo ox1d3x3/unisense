@@ -159,6 +159,7 @@
         updating: false,
         timer: null,
         flows: {},            /* cc -> animated flow */
+        hist: [],             /* recent [download, upload] totals for the sparklines */
         colors: null
     };
 
@@ -289,11 +290,14 @@
     /* ------------------------------------------------------- canvas flows */
     /*
      * Two canvases over the map:
-     *   base  — arcs and this firewall's marker; redrawn only when the data or
-     *           the hovered country changes
-     *   anim  — particles and destination pulses; redrawn every frame, in a
-     *           few batched paths (one per colour and opacity), with all
-     *           geometry precomputed per update
+     *   base  — this firewall's marker; redrawn only on resize or theme change
+     *   anim  — arcs, "strings" of light travelling along them and the
+     *           destination pulses; redrawn every frame from precomputed
+     *           geometry, batched into a handful of Path2D strokes keyed by
+     *           width and opacity
+     * Everything eases: speeds glide to the new rate after each poll, arcs fade
+     * in and out, and streaks are added at the source and retired only when
+     * they reach the end, so a refresh never makes anything jump.
      * The loop runs only while there is traffic, the map is on screen, the tab
      * is visible, the page is live and motion is allowed.
      */
@@ -303,6 +307,9 @@
     var lastFrame = 0;
     var onScreen = true;
     var copies = [];          /* drawable arc copies (wrapped flows have two) */
+    var TAU = 6.2832;
+    var pace = { ema: 16.7, half: false, until: 0, skip: false, lastTs: 0, scrolling: 0 };
+    var SEG = 96;             /* samples per arc */
 
     function resizeCanvas() {
         var box = q('mapbox');
@@ -313,6 +320,9 @@
         }
         var w = box.clientWidth;
         var h = box.clientHeight;
+        if (!w || !h) {
+            return;
+        }
         var dpr = Math.min(window.devicePixelRatio || 1, 2);
         [base, anim].forEach(function (c) {
             c.width = Math.round(w * dpr);
@@ -332,7 +342,7 @@
         probe.style.display = 'none';
         root.appendChild(probe);
         var out = {};
-        [['dl', '--utm-accent'], ['ul', '--utm-ok']].forEach(function (p) {
+        [['dl', '--utm-accent'], ['ul', '--utm-ok'], ['home', '--utm-ok']].forEach(function (p) {
             probe.style.color = 'var(' + p[1] + ')';
             out[p[0]] = getComputedStyle(probe).color;
         });
@@ -340,29 +350,38 @@
         S.colors = out;
     }
 
-    function speedFor(bps) {
-        if (!(bps > 2000)) {
-            return 0;
-        }
-        /* fraction of the arc per second: 10 kb/s ~0.14, 1 Mb/s ~0.32, 100 Mb/s ~0.5 */
-        return Math.min(0.6, 0.05 + Math.log10(bps / 1000) * 0.09);
+    /* travel speed in px/s: 10 kb/s ~75, 1 Mb/s ~165, 100 Mb/s ~255 */
+    function pxSpeed(bps) {
+        return bps > 2000 ? Math.min(300, 30 + Math.log10(bps / 1000) * 45) : 0;
     }
 
-    function particleCount(bps) {
-        return bps > 2000 ? Math.max(1, Math.min(5, Math.round(Math.log10(bps / 1000)))) : 0;
+    function streakCount(bps) {
+        return bps > 2000 ? Math.max(1, Math.min(6, Math.round(Math.log10(bps / 1000) * 1.2))) : 0;
     }
 
-    /* rebuild the flow list after each poll, keeping particles of existing flows */
+    /* rebuild the flow list after each poll; existing flows keep their streaks */
     function updateFlows() {
-        var next = {};
         var home = S.data && S.world && S.world.byCc[S.data.home];
+        Object.keys(S.flows).forEach(function (cc) {
+            S.flows[cc].want = false;
+        });
         if (home) {
-            (S.data.countries || []).slice(0, TOP).forEach(function (c, i) {
+            var top = (S.data.countries || []).slice(0, TOP);
+            var max = 0;
+            top.forEach(function (c) {
+                max = Math.max(max, c.in_bps + c.out_bps);
+            });
+            top.forEach(function (c, i) {
                 var dest = S.world.byCc[c.cc];
-                if (!dest || c.cc === S.data.home || (c.in_bps + c.out_bps) <= 2000) {
+                var bps = c.in_bps + c.out_bps;
+                if (!dest || c.cc === S.data.home || bps <= 2000) {
                     return;
                 }
-                var f = S.flows[c.cc] || { cc: c.cc, dl: [], ul: [], phase: (i * 0.37) % 1 };
+                var f = S.flows[c.cc];
+                if (!f) {
+                    f = S.flows[c.cc] = { cc: c.cc, dl: [], ul: [], vis: 0, sdl: 0, sul: 0, phase: (i * 0.37) % 1, fresh: true };
+                }
+                f.want = true;
                 f.from = home.c;
                 f.to = dest.c;
                 /* more than half the map away: take the short way round the
@@ -370,24 +389,35 @@
                    copies, one leaving each edge */
                 var dx = dest.c[0] - home.c[0];
                 f.wrap = Math.abs(dx) > S.world.w / 2 ? (dx < 0 ? S.world.w : -S.world.w) : 0;
-                f.sdl = speedFor(c.in_bps);
-                f.sul = speedFor(c.out_bps);
-                sizeParticles(f.dl, particleCount(c.in_bps));
-                sizeParticles(f.ul, particleCount(c.out_bps));
-                next[c.cc] = f;
+                f.tdl = pxSpeed(c.in_bps);
+                f.tul = pxSpeed(c.out_bps);
+                f.ndl = streakCount(c.in_bps);
+                f.nul = streakCount(c.out_bps);
+                /* busier countries get a slightly bolder arc */
+                f.lw = 0.8 + 1.4 * (max > 0 ? Math.log(1 + bps) / Math.log(1 + max) : 0);
             });
         }
-        S.flows = next;
         buildCopies();
         drawBase();
+        Object.keys(S.flows).forEach(function (cc) {
+            var f = S.flows[cc];
+            if (f.fresh && f.len) {
+                /* a new flow starts already populated, evenly spaced */
+                f.fresh = false;
+                f.sdl = f.tdl;
+                f.sul = f.tul;
+                fill(f.dl, f.ndl, f.phase);
+                fill(f.ul, f.nul, (f.phase + 0.5) % 1);
+            }
+        });
         scheduleDraw();
     }
 
-    function sizeParticles(list, n) {
-        while (list.length < n) {
-            list.push(list.length ? (list[list.length - 1] + 1 / (n + 1)) % 1 : Math.random());
+    function fill(list, n, start) {
+        list.length = 0;
+        for (var i = 0; i < n; i++) {
+            list.push((start + i / n) % 1);
         }
-        list.length = n;
     }
 
     /* screen-space quadratic arcs, bent upwards, more for longer ones */
@@ -403,18 +433,39 @@
             ny = -ny;
         }
         var k = Math.min(0.32, 40 * s / d + 0.12) * d;
-        return { f: f, x0: x0, y0: y0, cx: (x0 + x2) / 2 + nx * k, cy: (y0 + y2) / 2 + ny * k, x2: x2, y2: y2, end: end };
+        var cx = (x0 + x2) / 2 + nx * k, cy = (y0 + y2) / 2 + ny * k;
+        /* arc length: mean of the chord and the control polygon (close enough) */
+        var poly = Math.hypot(cx - x0, cy - y0) + Math.hypot(x2 - cx, y2 - cy);
+        /* the curve sampled once (LUT), so a frame only interpolates */
+        var lut = new Float32Array((SEG + 1) * 2);
+        for (var i = 0; i <= SEG; i++) {
+            var u = i / SEG, a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, e = u * u;
+            lut[i * 2] = a * x0 + b * cx + e * x2;
+            lut[i * 2 + 1] = a * y0 + b * cy + e * y2;
+        }
+        return { f: f, x0: x0, y0: y0, cx: cx, cy: cy, x2: x2, y2: y2, end: end, len: (d + poly) / 2, lut: lut };
     }
 
     function buildCopies() {
         copies = [];
+        if (!S.world || !view.w) {
+            return;
+        }
         Object.keys(S.flows).forEach(function (cc) {
             var f = S.flows[cc];
+            if (!f.from) {
+                return;
+            }
+            var a, b;
             if (!f.wrap) {
-                copies.push(makeCopy(f, f.from, f.to, true));
+                a = makeCopy(f, f.from, f.to, true);
+                copies.push(a);
+                f.len = a.len;
             } else {
-                copies.push(makeCopy(f, f.from, [f.to[0] + f.wrap, f.to[1]], false));
-                copies.push(makeCopy(f, [f.from[0] - f.wrap, f.from[1]], f.to, true));
+                a = makeCopy(f, f.from, [f.to[0] + f.wrap, f.to[1]], false);
+                b = makeCopy(f, [f.from[0] - f.wrap, f.from[1]], f.to, true);
+                copies.push(a, b);
+                f.len = Math.max(a.len, b.len);
             }
         });
     }
@@ -429,19 +480,42 @@
         }
         if (animating()) {
             lastFrame = 0;
+            pace.lastTs = 0;
             raf = requestAnimationFrame(frame);
         } else {
             drawAnim(0);
         }
     }
 
+    /*
+     * Frame pacing: draw every frame while the browser keeps up; if frames
+     * start to drop (slow machine, software rendering, a busy tab), draw every
+     * other frame for a while — a steady 30 fps looks smoother than an uneven
+     * 40 — and try full rate again later.
+     */
     function frame(ts) {
         raf = 0;
-        var dt = lastFrame ? Math.min(0.1, (ts - lastFrame) / 1000) : 0;
-        lastFrame = ts;
-        drawAnim(dt);
+        if (pace.lastTs) {
+            pace.ema += (Math.min(100, ts - pace.lastTs) - pace.ema) * 0.08;
+        }
+        pace.lastTs = ts;
+        if (!pace.half && pace.ema > 20) {
+            pace.half = true;
+            pace.until = ts + 8000;
+        } else if (pace.half && ts > pace.until && pace.ema < 18) {
+            pace.half = false;
+        }
+        /* on a struggling machine, let scrolling have the frames */
+        pace.skip = pace.half && (!pace.skip || ts < pace.scrolling);
+        if (!pace.skip) {
+            var dt = lastFrame ? Math.min(0.1, (ts - lastFrame) / 1000) : 0;
+            lastFrame = ts;
+            drawAnim(dt);
+        }
         if (animating()) {
             raf = requestAnimationFrame(frame);
+        } else {
+            pace.lastTs = 0;
         }
     }
 
@@ -449,6 +523,11 @@
         c.beginPath();
         c.rect(view.ox, view.oy, S.world.w * view.s, S.world.h * view.s);
         c.clip();
+    }
+
+    function homeXY() {
+        var h = S.data && S.world && S.world.byCc[S.data.home];
+        return h ? [view.ox + h.c[0] * view.s, view.oy + h.c[1] * view.s] : null;
     }
 
     function drawBase() {
@@ -461,39 +540,98 @@
         var c = bctx;
         c.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
         c.clearRect(0, 0, view.w, view.h);
-        if (!copies.length) {
-            return;
-        }
-        c.save();
-        clipToMap(c);
-        c.lineWidth = 1.2;
-        c.strokeStyle = S.colors.dl;
-        [false, true].forEach(function (dimmed) {
-            c.globalAlpha = dimmed ? 0.12 : 0.35;
-            c.beginPath();
+        /* the arcs: few strokes, grouped by width and opacity */
+        if (copies.length) {
+            var groups = {};
             copies.forEach(function (k) {
-                if ((S.hover && S.hover !== k.f.cc) === dimmed) {
+                var f = k.f;
+                if (f.vis <= 0) {
+                    return;
+                }
+                var dim = S.hover && S.hover !== f.cc ? 0.3 : 1;
+                var lw = Math.round((S.hover === f.cc ? f.lw + 0.8 : f.lw) * 5) / 5;
+                var key = lw + '|' + Math.round(0.32 * f.vis * dim * 40) / 40;
+                var g = groups[key] || (groups[key] = []);
+                g.push(k);
+            });
+            c.save();
+            clipToMap(c);
+            c.strokeStyle = S.colors.dl;
+            c.lineCap = 'round';
+            Object.keys(groups).forEach(function (key) {
+                var parts = key.split('|');
+                c.lineWidth = +parts[0];
+                c.globalAlpha = +parts[1];
+                c.beginPath();
+                groups[key].forEach(function (k) {
                     c.moveTo(k.x0, k.y0);
                     c.quadraticCurveTo(k.cx, k.cy, k.x2, k.y2);
-                }
+                });
+                c.stroke();
             });
-            c.stroke();
-        });
-        c.restore();
+            c.restore();
+        }
+        var h = homeXY();
+        if (!h) {
+            return;
+        }
         /* this firewall */
-        var h = copies[0].f.from;
-        var hx = view.ox + h[0] * view.s, hy = view.oy + h[1] * view.s;
-        c.fillStyle = S.colors.dl;
-        c.globalAlpha = 0.2;
+        c.globalAlpha = 0.22;
+        c.fillStyle = S.colors.home;
         c.beginPath();
-        c.arc(hx, hy, 9, 0, 6.2832);
+        c.arc(h[0], h[1], 8, 0, TAU);
         c.fill();
         c.globalAlpha = 1;
         c.beginPath();
-        c.arc(hx, hy, 3.6, 0, 6.2832);
+        c.arc(h[0], h[1], 3.6, 0, TAU);
         c.fill();
     }
 
+    /* advance one lane: streaks are spawned at the source, spaced evenly,
+       and removed only when they arrive, so count changes never pop */
+    function stepLane(list, n, du) {
+        var i;
+        var minP = 1;
+        for (i = list.length - 1; i >= 0; i--) {
+            var p = list[i] + du;
+            if (p >= 1) {
+                if (list.length > n) {
+                    list.splice(i, 1);
+                    continue;
+                }
+                p -= 1;
+            }
+            list[i] = p;
+            minP = Math.min(minP, p);
+        }
+        if (list.length < n && (!list.length || minP >= 1 / n)) {
+            list.push(0);
+        }
+    }
+
+    /* a point on a sampled arc at u (0..1) */
+    function at(lut, u, out) {
+        var x = u * SEG;
+        var i = x | 0;
+        if (i >= SEG) {
+            i = SEG - 1;
+        }
+        var r = x - i;
+        out[0] = lut[i * 2] + (lut[i * 2 + 2] - lut[i * 2]) * r;
+        out[1] = lut[i * 2 + 1] + (lut[i * 2 + 3] - lut[i * 2 + 1]) * r;
+    }
+
+    var TAIL = [0.12, 0.38, 0.85];      /* opacity per tail piece, tail -> head */
+    var NT = TAIL.length;
+    var pa = [0, 0], pb = [0, 0];
+    var MAIN = null;
+
+    /*
+     * One frame. All streaks of fully visible, undimmed flows go into a fixed
+     * set of paths — one per colour and tail piece, plus two for the heads —
+     * so a frame is ~14 strokes and fills however much is moving. Flows that
+     * are fading or dimmed by a hover get their own small batch.
+     */
     function drawAnim(dt) {
         if (!actx) {
             return;
@@ -504,67 +642,203 @@
         var c = actx;
         c.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
         c.clearRect(0, 0, view.w, view.h);
+
+        /* ease speeds and visibility, advance streaks, drop faded flows */
+        var ease = 1 - Math.exp(-dt * 2.5);
+        var changed = false;
+        var gone = false;
+        var keys = Object.keys(S.flows);
+        for (var fi = 0; fi < keys.length; fi++) {
+            var f = S.flows[keys[fi]];
+            var target = f.want ? 1 : 0;
+            var v0 = f.vis;
+            if (!dt) {
+                f.vis = reduceMotion() || !S.live ? target : f.vis;
+            } else {
+                f.vis += (target - f.vis) * Math.min(1, dt * 3.2);
+                if (Math.abs(f.vis - target) < 0.01) {
+                    f.vis = target;
+                }
+            }
+            if (f.vis !== v0) {
+                changed = true;
+            }
+            if (!f.want && f.vis === 0) {
+                delete S.flows[keys[fi]];
+                gone = true;
+                continue;
+            }
+            if (dt && f.len) {
+                f.sdl += ((f.want ? f.tdl : 0) - f.sdl) * ease;
+                f.sul += ((f.want ? f.tul : 0) - f.sul) * ease;
+                stepLane(f.dl, f.want ? f.ndl : 0, f.sdl * dt / f.len);
+                stepLane(f.ul, f.want ? f.nul : 0, f.sul * dt / f.len);
+            }
+        }
+        if (gone) {
+            buildCopies();
+        }
+        if (changed || gone) {
+            drawBase();
+        }
         if (!copies.length) {
             return;
         }
-        Object.keys(S.flows).forEach(function (cc) {
-            var f = S.flows[cc];
-            var i;
-            for (i = 0; i < f.dl.length; i++) {
-                f.dl[i] = (f.dl[i] + f.sdl * dt) % 1;
-            }
-            for (i = 0; i < f.ul.length; i++) {
-                f.ul[i] = (f.ul[i] + f.sul * dt) % 1;
-            }
-        });
+
+        if (!MAIN) {
+            MAIN = { dl: newBatch(), ul: newBatch() };
+        }
         c.save();
         clipToMap(c);
-        /* particles, batched: [colour, lane, downloads travel towards us] */
-        [[S.colors.dl, 'dl', true], [S.colors.ul, 'ul', false]].forEach(function (lane) {
-            c.fillStyle = lane[0];
-            [[4.2, 0.22, 0.08], [1.9, 1, 0.3]].forEach(function (ring) {
-                [false, true].forEach(function (dimmed) {
-                    c.globalAlpha = dimmed ? ring[2] : ring[1];
-                    c.beginPath();
-                    copies.forEach(function (k) {
-                        if ((S.hover && S.hover !== k.f.cc) !== dimmed) {
-                            return;
-                        }
-                        var list = k.f[lane[1]];
-                        for (var i = 0; i < list.length; i++) {
-                            var u = lane[2] ? 1 - list[i] : list[i];
-                            var a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, d = u * u;
-                            var px = a * k.x0 + b * k.cx + d * k.x2;
-                            var py = a * k.y0 + b * k.cy + d * k.y2;
-                            c.moveTo(px + ring[0], py);
-                            c.arc(px, py, ring[0], 0, 6.2832);
-                        }
-                    });
-                    c.fill();
-                });
-            });
+        var main = { dl: resetBatch(MAIN.dl), ul: resetBatch(MAIN.ul) };
+        var extra = [];
+        for (var ci = 0; ci < copies.length; ci++) {
+            var k = copies[ci];
+            var fl = k.f;
+            if (fl.vis <= 0) {
+                continue;
+            }
+            var mul = fl.vis * (S.hover && S.hover !== fl.cc ? 0.25 : 1);
+            var bt = main;
+            if (mul < 0.999) {
+                bt = { dl: newBatch(), ul: newBatch(), mul: mul };
+                extra.push(bt);
+            }
+            var tail = Math.min(0.4, 64 / (fl.len || 64));
+            addStreaks(bt.dl, k.lut, fl.dl, tail, true);
+            addStreaks(bt.ul, k.lut, fl.ul, tail, false);
+        }
+        paintBatch(c, main.dl, S.colors.dl, 1);
+        paintBatch(c, main.ul, S.colors.ul, 1);
+        extra.forEach(function (x) {
+            paintBatch(c, x.dl, S.colors.dl, x.mul);
+            paintBatch(c, x.ul, S.colors.ul, x.mul);
         });
-        /* destination pulses */
+
+        /* destination pulses, batched into a few opacity steps */
         var now = performance.now() / 1000;
+        var rings = [];
+        var dots = new Path2D();
+        var dimDots = new Path2D();
+        var anyDim = false;
+        for (ci = 0; ci < copies.length; ci++) {
+            k = copies[ci];
+            if (!k.end || k.f.vis <= 0) {
+                continue;
+            }
+            var dim = (S.hover && S.hover !== k.f.cc ? 0.3 : 1) * k.f.vis;
+            var ph = ((now * 0.6) + k.f.phase) % 1;
+            var step = Math.min(7, Math.floor((1 - ph) * dim * 8));
+            if (step > 0) {
+                var rp = rings[step] || (rings[step] = new Path2D());
+                var rr = 2 + ph * 9;
+                rp.moveTo(k.x2 + rr, k.y2);
+                rp.arc(k.x2, k.y2, rr, 0, TAU);
+            }
+            var dp = dim > 0.99 ? dots : dimDots;
+            anyDim = anyDim || dp === dimDots;
+            dp.moveTo(k.x2 + 2.2, k.y2);
+            dp.arc(k.x2, k.y2, 2.2, 0, TAU);
+        }
         c.fillStyle = S.colors.dl;
         c.strokeStyle = S.colors.dl;
         c.lineWidth = 1.2;
-        copies.forEach(function (k) {
-            if (!k.end) {
-                return;
+        for (var ri = 1; ri < rings.length; ri++) {
+            if (rings[ri]) {
+                c.globalAlpha = ri / 8 * 0.6;
+                c.stroke(rings[ri]);
             }
-            var dim = S.hover && S.hover !== k.f.cc;
-            var ph = ((now * 0.6) + k.f.phase) % 1;
-            c.globalAlpha = (1 - ph) * (dim ? 0.2 : 0.6);
+        }
+        c.globalAlpha = 0.95;
+        c.fill(dots);
+        if (anyDim) {
+            c.globalAlpha = 0.3;
+            c.fill(dimDots);
+        }
+        /* this firewall: a slow "live" ring */
+        var h = homeXY();
+        if (h && S.live) {
+            var hp = (now * 0.45) % 1;
+            c.strokeStyle = S.colors.home;
+            c.globalAlpha = (1 - hp) * 0.55;
             c.beginPath();
-            c.arc(k.x2, k.y2, 2 + ph * 9, 0, 6.2832);
+            c.arc(h[0], h[1], 4 + hp * 16, 0, TAU);
             c.stroke();
-            c.globalAlpha = dim ? 0.35 : 0.95;
-            c.beginPath();
-            c.arc(k.x2, k.y2, 2.2, 0, 6.2832);
-            c.fill();
-        });
+        }
         c.restore();
+    }
+
+    /* reusable coordinate buffers: no allocations per frame */
+    function newBatch() {
+        var b = { pieces: [], heads: [], n: 0 };
+        for (var i = 0; i < NT; i++) {
+            b.pieces.push([]);
+        }
+        return b;
+    }
+
+    function resetBatch(b) {
+        for (var i = 0; i < NT; i++) {
+            b.pieces[i].length = 0;
+        }
+        b.heads.length = 0;
+        b.n = 0;
+        return b;
+    }
+
+    /* list: progress of each streak; toUs: downloads travel towards home (u = 1 - p) */
+    function addStreaks(b, lut, list, tail, toUs) {
+        var step = tail / NT;
+        for (var i = 0; i < list.length; i++) {
+            var p = list[i];
+            for (var s = 0; s < NT; s++) {
+                var p1 = p - step * (NT - s - 1);
+                if (p1 <= 0) {
+                    continue;
+                }
+                var p0 = p1 - step;
+                if (p0 < 0) {
+                    p0 = 0;
+                }
+                at(lut, toUs ? 1 - p0 : p0, pa);
+                at(lut, toUs ? 1 - p1 : p1, pb);
+                b.pieces[s].push(pa[0], pa[1], pb[0], pb[1]);
+            }
+            at(lut, toUs ? 1 - p : p, pa);
+            b.heads.push(pa[0], pa[1]);
+            b.n++;
+        }
+    }
+
+    function paintBatch(c, b, colour, mul) {
+        if (!b.n) {
+            return;
+        }
+        var i, s, a;
+        c.strokeStyle = colour;
+        c.fillStyle = colour;
+        c.lineWidth = 2;
+        for (s = 0; s < NT; s++) {
+            a = b.pieces[s];
+            if (!a.length) {
+                continue;
+            }
+            c.globalAlpha = TAIL[s] * mul;
+            c.beginPath();
+            for (i = 0; i < a.length; i += 4) {
+                c.moveTo(a[i], a[i + 1]);
+                c.lineTo(a[i + 2], a[i + 3]);
+            }
+            c.stroke();
+        }
+        a = b.heads;
+        c.globalAlpha = mul;
+        c.beginPath();
+        for (i = 0; i < a.length; i += 2) {
+            c.moveTo(a[i] + 2.2, a[i + 1]);
+            c.arc(a[i], a[i + 1], 2.2, 0, TAU);
+        }
+        c.fill();
     }
 
     /* ------------------------------------------------------------ tooltip */
@@ -638,38 +912,141 @@
     }
 
     /* ------------------------------------------------------- stats + table */
+    /*
+     * Built once, then updated in place: numbers glide to their new value,
+     * the download/upload sparklines scroll continuously, table rows are
+     * keyed by country and slide (FLIP) to their new rank instead of the
+     * whole table being replaced every poll.
+     */
+    var HIST = 40;
+    var stats = null;
+
+    function buildStats() {
+        var box = q('stats');
+        box.innerHTML =
+            statHtml('dl', 'fa-arrow-down', t('download', 'Download'), 'utm-dl', true) +
+            statHtml('ul', 'fa-arrow-up', t('upload', 'Upload'), 'utm-ul', true) +
+            statHtml('cc', 'fa-earth-americas', t('countries', 'Countries'), '', false) +
+            statHtml('cn', 'fa-arrow-right-arrow-left', t('connections', 'Connections'), '', false);
+        stats = {};
+        ['dl', 'ul', 'cc', 'cn'].forEach(function (k) {
+            var el = box.querySelector('[data-utm-stat="' + k + '"]');
+            stats[k] = {
+                value: el.querySelector('.utm-stat-value'),
+                sub: el.querySelector('.utm-stat-sub'),
+                spark: el.querySelector('.utm-spark'),
+                cur: 0
+            };
+        });
+    }
+
+    function statHtml(key, icon, title, cls, spark) {
+        return '<div class="utm-stat" data-utm-stat="' + key + '"><span class="utm-stat-icon ' + cls + '"><i class="fa ' + icon + '"></i></span>' +
+            '<span class="utm-stat-body"><span class="utm-stat-title">' + esc(title) + '</span>' +
+            '<span class="utm-stat-value">&mdash;</span>' +
+            '<span class="utm-stat-sub"></span></span>' +
+            (spark ? '<span class="utm-spark ' + cls + '" aria-hidden="true"><svg viewBox="0 0 100 32" preserveAspectRatio="none">' +
+                '<path class="utm-spark-area"></path><path class="utm-spark-line"></path></svg></span>' : '') +
+            '</div>';
+    }
+
+    /* count a number up or down to its new value */
+    function tween(st, to, fmt) {
+        var from = st.cur;
+        st.cur = to;
+        if (st.anim) {
+            cancelAnimationFrame(st.anim);
+            st.anim = 0;
+        }
+        if (reduceMotion() || document.hidden || from === to || !isFinite(from)) {
+            st.value.textContent = fmt(to);
+            return;
+        }
+        var t0 = performance.now();
+        var step = function (now) {
+            var k = Math.min(1, (now - t0) / 650);
+            k = 1 - Math.pow(1 - k, 3);
+            st.value.textContent = fmt(from + (to - from) * k);
+            st.anim = k < 1 ? requestAnimationFrame(step) : 0;
+        };
+        st.anim = requestAnimationFrame(step);
+    }
+
+    function sparkline(st, series, max) {
+        var svg = st.spark;
+        if (!svg) {
+            return;
+        }
+        /* until the history fills up, extend the oldest value to the left */
+        while (series.length && series.length < HIST) {
+            series.unshift(series[0]);
+        }
+        var n = series.length;
+        var dx = 100 / (HIST - 2);
+        var pts = series.map(function (v, i) {
+            var x = 100 - (n - 1 - i) * dx;
+            return [x, 30 - (max > 0 ? v / max : 0) * 26];
+        });
+        if (n < 2) {
+            pts = [[0, 30], [100, 30]];
+        }
+        var line = 'M' + pts.map(function (p) { return p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join('L');
+        var area = line + 'L' + pts[pts.length - 1][0].toFixed(1) + ' 32L' + pts[0][0].toFixed(1) + ' 32Z';
+        var g = svg.firstChild;              /* the <svg>; the wrapper clips it */
+        g.lastChild.setAttribute('d', line);
+        g.firstChild.setAttribute('d', area);
+        /* the new point arrives off to the right: slide it in over one poll.
+           The animated element is the HTML-level <svg> box, so the compositor
+           moves it without re-laying-out the SVG every frame. */
+        if (typeof g.animate === 'function' && !reduceMotion()) {
+            if (g.__utmAnim) {
+                g.__utmAnim.cancel();
+            }
+            var wpx = svg.clientWidth || 100;
+            var shift = dx * wpx / 100;
+            g.__utmAnim = g.animate([{ transform: 'translate3d(' + shift + 'px,0,0)' }, { transform: 'translate3d(0,0,0)' }],
+                { duration: POLL_MS, easing: 'linear' });
+        }
+    }
+
     function renderStats() {
+        if (!stats) {
+            buildStats();
+        }
         var d = S.data;
         var tot = (d && d.totals) || {};
         var list = (d && d.countries) || [];
         var active = list.filter(function (c) { return c.cc !== '??' && c.conns > 0; }).length;
         var moving = list.filter(function (c) { return c.cc !== '??' && (c.in_bps + c.out_bps) > 2000; }).length;
-        setHtml(q('stats'),
-            stat('fa-arrow-down', t('download', 'Download'), fmtBits(tot.in_bps), fmtBytes(tot.bytes_in), 'utm-dl') +
-            stat('fa-arrow-up', t('upload', 'Upload'), fmtBits(tot.out_bps), fmtBytes(tot.bytes_out), 'utm-ul') +
-            stat('fa-earth-americas', t('countries', 'Countries'), String(active), moving + ' ' + t('active', 'active now'), '') +
-            stat('fa-arrow-right-arrow-left', t('connections', 'Connections'), String(tot.conns || 0), '', ''));
-    }
-
-    function stat(icon, title, value, sub, cls) {
-        return '<div class="utm-stat"><span class="utm-stat-icon ' + cls + '"><i class="fa ' + icon + '"></i></span>' +
-            '<span class="utm-stat-body"><span class="utm-stat-title">' + esc(title) + '</span>' +
-            '<span class="utm-stat-value">' + esc(value) + '</span>' +
-            '<span class="utm-stat-sub">' + esc(sub) + '</span></span></div>';
-    }
-
-    function renderTable() {
-        var d = S.data;
-        var list = ((d && d.countries) || []).slice(0, TOP);
-        var tot = (d && d.totals) || {};
-        var totalRate = (tot.in_bps || 0) + (tot.out_bps || 0);
-        var totalBytes = (tot.bytes_in || 0) + (tot.bytes_out || 0);
-        setHtml(q('top-sub'), list.length ? esc(fmtBits(tot.in_bps)) + ' &darr; · ' + esc(fmtBits(tot.out_bps)) + ' &uarr;' : '');
-        if (!list.length) {
-            setHtml(q('table'), '<div class="utm-empty">' + esc(t('idle', 'No traffic to other countries right now.')) + '</div>');
+        if (!d) {
             return;
         }
-        var html = '<table class="utm-table"><thead><tr>' +
+        tween(stats.dl, tot.in_bps || 0, fmtBits);
+        tween(stats.ul, tot.out_bps || 0, fmtBits);
+        stats.cc.value.textContent = String(active);
+        stats.cn.value.textContent = String(tot.conns || 0);
+        stats.dl.sub.textContent = fmtBytes(tot.bytes_in);
+        stats.ul.sub.textContent = fmtBytes(tot.bytes_out);
+        stats.cc.sub.textContent = moving + ' ' + t('active', 'active now');
+        if (d.interval) {
+            S.hist.push([tot.in_bps || 0, tot.out_bps || 0]);
+            if (S.hist.length > HIST) {
+                S.hist.shift();
+            }
+            var max = 0;
+            S.hist.forEach(function (h) {
+                max = Math.max(max, h[0], h[1]);
+            });
+            sparkline(stats.dl, S.hist.map(function (h) { return h[0]; }), max);
+            sparkline(stats.ul, S.hist.map(function (h) { return h[1]; }), max);
+        }
+    }
+
+    var table = null;
+
+    function buildTable() {
+        var wrap = q('table');
+        wrap.innerHTML = '<table class="utm-table"><thead><tr>' +
             '<th class="utm-c-rank">#</th><th>' + esc(t('country', 'Country')) + '</th>' +
             '<th class="utm-c-num">&darr; ' + esc(t('download', 'Download')) + '</th>' +
             '<th class="utm-c-num">&uarr; ' + esc(t('upload', 'Upload')) + '</th>' +
@@ -677,35 +1054,140 @@
             '<th class="utm-c-num">' + esc(t('connections', 'Connections')) + '</th>' +
             '<th class="utm-c-num utm-c-hide">' + esc(t('transferred', 'Transferred')) + '</th>' +
             '<th class="utm-c-hide">' + esc(t('networks', 'Networks')) + '</th>' +
-            '</tr></thead><tbody>';
+            '</tr></thead><tbody></tbody></table>' +
+            '<div class="utm-empty" hidden>' + esc(t('idle', 'No traffic to other countries right now.')) + '</div>';
+        wrap.__utmHtml = null;
+        table = { el: wrap.firstChild, body: wrap.querySelector('tbody'), empty: wrap.lastChild, rows: {} };
+    }
+
+    function makeRow(cc) {
+        var tr = document.createElement('tr');
+        tr.className = 'utm-row';
+        tr.setAttribute('data-cc', cc);
+        tr.tabIndex = 0;
+        tr.innerHTML = '<td class="utm-c-rank"></td>' +
+            '<td><span class="utm-c-country">' + flag(cc) + '<span>' + esc(countryName(cc)) + '</span><small class="utm-home-tag" hidden>' +
+            esc(t('home', 'This firewall')) + '</small></span></td>' +
+            '<td class="utm-c-num utm-dl"></td><td class="utm-c-num utm-ul"></td>' +
+            '<td class="utm-c-share"><span class="utm-bar"><i></i></span><small></small></td>' +
+            '<td class="utm-c-num"></td><td class="utm-c-num utm-c-hide"></td><td class="utm-c-hide utm-c-nets"></td>';
+        var td = tr.children;
+        return {
+            tr: tr, rank: td[0], home: td[1].querySelector('.utm-home-tag'), dl: td[2], ul: td[3],
+            bar: td[4].querySelector('i'), pct: td[4].querySelector('small'), conns: td[5], bytes: td[6], nets: td[7],
+            detail: null, cache: {}
+        };
+    }
+
+    function put(r, key, el, text) {
+        if (r.cache[key] !== text) {
+            r.cache[key] = text;
+            el.textContent = text;
+        }
+    }
+
+    function putHtml(r, key, el, html) {
+        if (r.cache[key] !== html) {
+            r.cache[key] = html;
+            el.innerHTML = html;
+        }
+    }
+
+    function renderTable() {
+        if (!table || !table.el.isConnected) {
+            buildTable();
+        }
+        var d = S.data;
+        var list = ((d && d.countries) || []).slice(0, TOP);
+        var tot = (d && d.totals) || {};
+        var totalRate = (tot.in_bps || 0) + (tot.out_bps || 0);
+        var totalBytes = (tot.bytes_in || 0) + (tot.bytes_out || 0);
+        setHtml(q('top-sub'), list.length ? esc(fmtBits(tot.in_bps)) + ' &darr; · ' + esc(fmtBits(tot.out_bps)) + ' &uarr;' : '');
+        table.el.hidden = !list.length;
+        table.empty.hidden = !!list.length;
+
+        /* FLIP: remember where each row was */
+        var before = {};
+        var animate = !reduceMotion() && typeof Element.prototype.animate === 'function';
+        if (animate) {
+            Object.keys(table.rows).forEach(function (cc) {
+                before[cc] = table.rows[cc].tr.getBoundingClientRect().top;
+            });
+        }
+
+        var keep = {};
+        var order = [];
         list.forEach(function (c, i) {
+            keep[c.cc] = true;
+            var r = table.rows[c.cc] || (table.rows[c.cc] = makeRow(c.cc));
             var rate = c.in_bps + c.out_bps;
             var share = totalRate > 0 ? rate / totalRate : (totalBytes > 0 ? (c.bytes_in + c.bytes_out) / totalBytes : 0);
-            var open = S.selected === c.cc;
-            html += '<tr class="utm-row' + (open ? ' is-open' : '') + (S.hover === c.cc ? ' is-hover' : '') + '" data-cc="' + esc(c.cc) + '" tabindex="0">' +
-                '<td class="utm-c-rank">' + (i + 1) + '</td>' +
-                '<td><span class="utm-c-country">' + flag(c.cc) + '<span>' + esc(countryName(c.cc)) + '</span>' +
-                (d.home === c.cc ? ' <small class="utm-home-tag">' + esc(t('home', 'This firewall')) + '</small>' : '') + '</span></td>' +
-                '<td class="utm-c-num utm-dl">' + esc(fmtBits(c.in_bps)) + '</td>' +
-                '<td class="utm-c-num utm-ul">' + esc(fmtBits(c.out_bps)) + '</td>' +
-                '<td class="utm-c-share"><span class="utm-bar"><i style="width:' + Math.max(1, Math.round(share * 100)) + '%"></i></span>' +
-                '<small>' + Math.round(share * 100) + '%</small></td>' +
-                '<td class="utm-c-num">' + c.conns + '</td>' +
-                '<td class="utm-c-num utm-c-hide">' + esc(fmtBytes(c.bytes_in + c.bytes_out)) + '</td>' +
-                '<td class="utm-c-hide utm-c-nets">' + (c.asns || []).slice(0, 2).map(function (a) {
-                    return a.asn ? '<span>' + esc(a.name || ('AS' + a.asn)) + '</span>' : '';
-                }).join('') + '</td></tr>';
-            if (open) {
-                html += '<tr class="utm-detail"><td></td><td colspan="7"><div class="utm-nets">' +
-                    (c.asns || []).filter(function (a) { return a.asn; }).map(function (a) {
-                        return '<div class="utm-net"><b>' + esc(a.name || 'Unknown network') + '</b>' +
-                            '<small>AS' + esc(a.asn) + ' · ' + a.conns + ' ' + esc(t('connections', 'Connections').toLowerCase()) + ' · ' + esc(fmtBytes(a.bytes)) + '</small>' +
-                            '<span class="utm-dl">&darr; ' + esc(fmtBits(a.in_bps)) + '</span><span class="utm-ul">&uarr; ' + esc(fmtBits(a.out_bps)) + '</span></div>';
-                    }).join('') + '</div></td></tr>';
+            put(r, 'rank', r.rank, String(i + 1));
+            r.home.hidden = d.home !== c.cc;
+            put(r, 'dl', r.dl, fmtBits(c.in_bps));
+            put(r, 'ul', r.ul, fmtBits(c.out_bps));
+            var pct = Math.round(share * 100);
+            if (r.cache.share !== pct) {
+                r.cache.share = pct;
+                r.bar.style.transform = 'scaleX(' + Math.max(0.01, share).toFixed(3) + ')';
+                r.pct.textContent = pct + '%';
+            }
+            put(r, 'conns', r.conns, String(c.conns));
+            put(r, 'bytes', r.bytes, fmtBytes(c.bytes_in + c.bytes_out));
+            putHtml(r, 'nets', r.nets, (c.asns || []).slice(0, 2).map(function (a) {
+                return a.asn ? '<span>' + esc(a.name || ('AS' + a.asn)) + '</span>' : '';
+            }).join(''));
+            r.tr.classList.toggle('is-open', S.selected === c.cc);
+            r.tr.classList.toggle('is-hover', S.hover === c.cc);
+            order.push(r.tr);
+            if (S.selected === c.cc) {
+                if (!r.detail) {
+                    r.detail = document.createElement('tr');
+                    r.detail.className = 'utm-detail';
+                    r.detail.innerHTML = '<td></td><td colspan="7"><div class="utm-nets"></div></td>';
+                }
+                setHtml(r.detail.querySelector('.utm-nets'), (c.asns || []).filter(function (a) { return a.asn; }).map(function (a) {
+                    return '<div class="utm-net"><b>' + esc(a.name || 'Unknown network') + '</b>' +
+                        '<small>AS' + esc(a.asn) + ' · ' + a.conns + ' ' + esc(t('connections', 'Connections').toLowerCase()) + ' · ' + esc(fmtBytes(a.bytes)) + '</small>' +
+                        '<span class="utm-dl">&darr; ' + esc(fmtBits(a.in_bps)) + '</span><span class="utm-ul">&uarr; ' + esc(fmtBits(a.out_bps)) + '</span></div>';
+                }).join(''));
+                order.push(r.detail);
+            } else if (r.detail) {
+                r.detail.remove();
+                r.detail = null;
             }
         });
-        html += '</tbody></table>';
-        setHtml(q('table'), html);
+        Object.keys(table.rows).forEach(function (cc) {
+            if (!keep[cc]) {
+                var r = table.rows[cc];
+                r.tr.remove();
+                if (r.detail) {
+                    r.detail.remove();
+                }
+                delete table.rows[cc];
+            }
+        });
+        /* move only what is out of place, so the DOM churns as little as possible */
+        var body = table.body;
+        order.forEach(function (el, i) {
+            if (body.children[i] !== el) {
+                body.insertBefore(el, body.children[i] || null);
+            }
+        });
+        if (animate) {
+            list.forEach(function (c) {
+                var r = table.rows[c.cc];
+                if (before[c.cc] === undefined) {
+                    r.tr.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
+                    return;
+                }
+                var dy = before[c.cc] - r.tr.getBoundingClientRect().top;
+                if (Math.abs(dy) > 1) {
+                    r.tr.animate([{ transform: 'translateY(' + dy + 'px)' }, { transform: 'none' }],
+                        { duration: 420, easing: 'cubic-bezier(.2, 0, 0, 1)' });
+                }
+            });
+        }
     }
 
     function onClick(e) {
@@ -859,6 +1341,9 @@
             scheduleDraw();
         }).observe(q('mapbox'));
     }
+    window.addEventListener('scroll', function () {
+        pace.scrolling = performance.now() + 150;
+    }, { passive: true, capture: true });
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden && S.live) {
             poll();

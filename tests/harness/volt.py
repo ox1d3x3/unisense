@@ -114,6 +114,7 @@ def make_env(view_roots, theme_root, core_www):
     env.globals.update(acl=_Acl(), session=_Session(), _items=_items, partial=partial, theme_file_or_default=theme_file_or_default,
                        file_exists=file_exists, cache_safe=lambda u: u, lang=Lang())
     env.filters['split_ws'] = lambda s: s.split(' ')
+    env.filters['json_encode'] = lambda v, *a: __import__('json').dumps(v)
     return env
 
 
@@ -162,6 +163,20 @@ def _parse_form_node_legacy(node):
 LEGACY_FORMS = False
 
 
+class VDict(dict):
+    """Volt arrays support '+' (left keys win, like PHP's array union)"""
+
+    def __add__(self, other):
+        merged = VDict(other or {})
+        merged.update(self)
+        return merged
+
+    def __radd__(self, other):
+        merged = VDict(self)
+        merged.update(other or {})
+        return merged
+
+
 def get_form(xml_path):
     root = ET.parse(xml_path).getroot()
     return _parse_form_node_legacy(root) if LEGACY_FORMS else _parse_form_node(root)
@@ -196,4 +211,4 @@ def get_form_grid(xml_path, grid_id=None):
     data['%010d.%03d' % (0, 0)] = {'column-id': 'uuid', 'label': 'ID', 'type': 'string', 'identifier': 'true',
                                    'visible': 'false'}
     base = grid_id or Path(xml_path).stem
-    return {'edit_dialog_id': 'dialog_' + base, 'fields': [data[k] for k in sorted(data)], 'table_id': base}
+    return VDict({'edit_dialog_id': 'dialog_' + base, 'fields': [data[k] for k in sorted(data)], 'table_id': base})

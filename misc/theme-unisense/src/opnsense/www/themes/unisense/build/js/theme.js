@@ -22,6 +22,7 @@
     var VERSION = '1.1.0';   /* stamped from VERSION by scripts/build.mjs */
     var REPO_URL = 'https://github.com/ox1d3x3/unisense';
     var MODE_KEY = 'unisense.mode';
+    var MENU_KEY = 'unisense.menu';     /* 'expanded': every menu section stays open */
     var ACCENT_KEY = 'unisense.accent';
     var MODES = ['auto', 'light', 'dark'];
     var ACCENTS = [
@@ -436,6 +437,11 @@
                 items[i].setAttribute('aria-checked', on ? 'true' : 'false');
                 items[i].classList.toggle('is-active', on);
             }
+            var mx = menuPanel.querySelector('[data-us-menu]');
+            if (mx) {
+                mx.setAttribute('aria-checked', menuExpanded() ? 'true' : 'false');
+                mx.classList.toggle('is-active', menuExpanded());
+            }
             var acc = savedAccent();
             var sw = menuPanel.querySelectorAll('[data-us-accent]');
             for (var j = 0; j < sw.length; j++) {
@@ -486,7 +492,9 @@
             html += '<button type="button" role="menuitemradio" data-us-accent="' + a.value + '" title="' + a.name +
                 '" aria-label="' + a.name + '" style="--us-swatch:' + a.value + '"></button>';
         });
-        html += '</div>';
+        html += '</div><div class="us-appearance-title">Menu</div>' +
+            '<button type="button" class="us-appearance-switch" role="menuitemcheckbox" data-us-menu="expanded">' +
+            '<span>Keep all sections open</span><i class="us-sw" aria-hidden="true"></i></button>';
         menuPanel.innerHTML = html;
 
         wrap.appendChild(menuButton);
@@ -511,6 +519,8 @@
                 setMode(t.getAttribute('data-us-mode'));
             } else if (t.hasAttribute('data-us-accent')) {
                 setAccent(t.getAttribute('data-us-accent'));
+            } else if (t.hasAttribute('data-us-menu')) {
+                setMenuExpanded(!menuExpanded());
             }
         });
         document.addEventListener('click', closeMenu);
@@ -594,13 +604,78 @@
         if (!nav) {
             return;
         }
+        var wasRail = null;
         var sync = function () {
-            root.classList.toggle('us-rail-collapsed', nav.classList.contains('col-sidebar-left'));
+            var rail = nav.classList.contains('col-sidebar-left');
+            root.classList.toggle('us-rail-collapsed', rail);
+            if (wasRail !== null && wasRail !== rail) {
+                applyMenuExpanded();
+            }
+            wasRail = rail;
         };
         sync();
         if (window.MutationObserver) {
             new MutationObserver(sync).observe(nav, { attributes: true, attributeFilter: ['class'] });
         }
+    }
+
+    /* ------------------------------------------------- expanded menu */
+    /*
+     * "Keep all sections open": every section and sub-section of the sidebar
+     * is shown and the accordion links (data-parent) are set aside, so opening
+     * one never closes another. Only in the full sidebar: the collapsed rail
+     * uses the same panels as hover fly-outs (core closes them all on entry).
+     */
+    function menuExpanded() {
+        return read(MENU_KEY) === 'expanded';
+    }
+
+    function railCollapsed() {
+        var nav = document.getElementById('navigation');
+        return !!(nav && nav.classList.contains('col-sidebar-left'));
+    }
+
+    function applyMenuExpanded() {
+        var menu = document.getElementById('mainmenu');
+        if (!menu) {
+            return;
+        }
+        var on = menuExpanded() && !railCollapsed();
+        root.classList.toggle('us-menu-expanded', on);
+        var toggles = menu.querySelectorAll('a[data-toggle="collapse"]');
+        for (var i = 0; i < toggles.length; i++) {
+            var a = toggles[i];
+            var target = document.querySelector(a.getAttribute('href') || '#none');
+            if (on) {
+                if (a.hasAttribute('data-parent')) {
+                    a.setAttribute('data-us-parent', a.getAttribute('data-parent'));
+                    a.removeAttribute('data-parent');
+                }
+                if (target) {
+                    target.classList.add('in');
+                    target.setAttribute('aria-expanded', 'true');
+                    target.style.height = '';
+                }
+                a.classList.remove('collapsed');
+                a.setAttribute('aria-expanded', 'true');
+            } else if (a.hasAttribute('data-us-parent')) {
+                /* back to the accordion: keep only the current page's sections open */
+                a.setAttribute('data-parent', a.getAttribute('data-us-parent'));
+                a.removeAttribute('data-us-parent');
+                if (target && !target.querySelector('.active') && !target.classList.contains('active-menu')) {
+                    target.classList.remove('in');
+                    target.setAttribute('aria-expanded', 'false');
+                    a.classList.add('collapsed');
+                    a.setAttribute('aria-expanded', 'false');
+                }
+            }
+        }
+    }
+
+    function setMenuExpanded(on) {
+        write(MENU_KEY, on ? 'expanded' : null);
+        applyMenuExpanded();
+        updateMenuState();
     }
 
     /* ------------------------------------------------- menu sections */
@@ -750,6 +825,7 @@
         try {
             mirrorRail();
             smoothMenu();
+            applyMenuExpanded();
             mountCredit();
             enhanceLogin();
         } catch (e) { /* cosmetic only */ }

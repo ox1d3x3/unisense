@@ -106,9 +106,12 @@
   margin-bottom: 14px;
 }
 .utm-stat {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
+  overflow: hidden;
+  contain: layout paint;
   padding: 14px 16px;
   border: 1px solid var(--utm-line);
   border-radius: var(--utm-radius);
@@ -128,7 +131,32 @@
   font-size: 16px;
 }
 .utm-stat-icon.utm-ul { background: var(--utm-ok-soft); color: var(--utm-ok); }
-.utm-stat-body { display: flex; flex-direction: column; min-width: 0; }
+.utm-stat-body { position: relative; z-index: 1; display: flex; flex-direction: column; min-width: 0; }
+.utm-stat-icon { position: relative; z-index: 1; }
+/* live throughput: a sparkline along the bottom of the card that scrolls
+   continuously (one transform animation per poll) */
+.utm-spark {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 46%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.utm-spark > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.utm-spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: .75;
+}
+.utm-spark-area { fill: currentColor; opacity: .1; }
+.utm-spark.utm-dl { color: var(--utm-accent); }
+.utm-spark.utm-ul { color: var(--utm-ok); }
 .utm-stat-title {
   color: var(--utm-text-3);
   font-size: 11.5px;
@@ -343,10 +371,13 @@
 }
 .utm-bar i {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: 3px;
-  background: var(--utm-accent);
-  transition: width .4s cubic-bezier(.2, 0, 0, 1);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--utm-accent) 70%, transparent), var(--utm-accent));
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform .6s cubic-bezier(.2, 0, 0, 1);
 }
 .utm-c-nets span {
   display: block;

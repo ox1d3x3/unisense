@@ -1,0 +1,60 @@
+// ===========================================================================
+// UniSense — fixes for individual core pages and generic overflow guards
+// (found by tests/harness/audit_layout.py over every core page)
+// ===========================================================================
+
+// rows nested directly in cards / tab panes: the card already pads, so the
+// row's negative gutter would stick out of it
+.content-box > .row,
+.tab-content > .tab-pane > .row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+// plain wide tables scroll inside their card on small screens instead of
+// widening the page
+@media (max-width: 767px) {
+  .content-box table.table:not(.opnsense_standard_table_form):not(.tabulator-table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+// Firewall: Log Files: Live View — core's filter bar never wraps above 800px
+.filters-bar {
+  flex-wrap: wrap;
+  row-gap: 12px;
+  min-height: 0 !important;
+
+  > * { min-width: 0; max-width: 100%; }
+}
+.filters-wrap {
+  flex-wrap: wrap;
+  > input, > .form-control, > select { max-width: 100%; }
+}
+.filters-middle { flex-wrap: wrap; }
+@media (max-width: 1199px) {
+  .filters-middle, .filters-right { margin-left: 0 !important; }
+}
+.filters-right { min-width: 0 !important; }
+
+// select boxes in grid toolbars and filter bars (interface / category / page
+// size / history ...): core gives some a fixed width that cuts the selected
+// value off — size them to their content instead, never wider than the bar
+.btn-group > .bootstrap-select,
+.actionBar .bootstrap-select,
+.filters-wrap .bootstrap-select,
+.bootstrap-select[style*="width: 100px"],
+.bootstrap-select[style*="width: 200px"] {
+  width: auto !important;
+  min-width: 96px;
+  max-width: 100%;
+}
+.bootstrap-select > .dropdown-toggle { padding-right: 28px; }
+
+// Bootstrap 3 draws a focus ring on links after a mouse click too (e.g. the
+// "full help" switch stayed ringed): keep it for keyboard focus only
+a:focus:not(:focus-visible),
+.btn:focus:not(:focus-visible) { outline: 0; }

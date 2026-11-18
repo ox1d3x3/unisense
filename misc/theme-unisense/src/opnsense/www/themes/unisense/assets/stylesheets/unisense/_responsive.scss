@@ -12,6 +12,15 @@
   .page-content-main > .container-fluid {
     padding-left: 12px;
     padding-right: 12px;
+
+    // the row's gutter must match the container padding, or every page
+    // scrolls sideways on phones (row -20px vs. container 12px)
+    > .row {
+      margin-left: -12px;
+      margin-right: -12px;
+      > section,
+      > [class*="col-"] { padding-left: 12px; padding-right: 12px; }
+    }
   }
 
   .content-box { border-radius: var(--us-radius-sm); }

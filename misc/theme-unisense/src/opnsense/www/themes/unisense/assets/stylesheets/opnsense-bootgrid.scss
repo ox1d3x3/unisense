@@ -27,10 +27,17 @@
     border-right: 0;
     background-color: var(--us-surface);
     color: var(--us-text-3);
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
-    letter-spacing: .04em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;   /* sentence case: ~25% narrower than spaced capitals, nothing cut off */
+}
+/* column titles wrap onto a second line instead of "DAY OF THE MO…" */
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+    white-space: normal;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
 }
 .tabulator .tabulator-header .tabulator-col.tabulator-sortable.tabulator-col-sorter-element:hover {
     background-color: var(--us-surface-hover);
@@ -197,10 +204,12 @@
 }
 /*------------*/
 
-/* theme: cells */
+/* theme: cells — values wrap instead of being cut off ("Update and reload
+   firewall al…"); Tabulator measures each row after rendering */
 .tabulator-row .tabulator-cell {
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
     line-height: 20px;
     padding: 8px 10px;
     vertical-align: top;
@@ -501,4 +510,11 @@
 }
 .bootgrid-selection-order {
     color: var(--us-accent);
+}
+
+/* command buttons and frozen columns stay on one line */
+.tabulator-row .tabulator-cell.tabulator-frozen,
+.tabulator-row .tabulator-cell[tabulator-field="commands"] {
+    white-space: nowrap;
+    overflow-wrap: normal;
 }

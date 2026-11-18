@@ -130,6 +130,23 @@ def main():
         lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane.is-on')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
         check(lanes >= 4, f'live data flow runs on the links ({lanes} lanes)')
         check(pg.locator('.usn-tile.is-active .usn-ripple').count() >= 1, 'busy devices ripple')
+        check(pg.evaluate("""[...document.querySelectorAll('.usn-tile')].every(t => {
+            const n = t.querySelector('.usn-tile-name'); const i = n && n.querySelector('.usn-live-ind');
+            return i && i.previousElementSibling && i.previousElementSibling.classList.contains('usn-tile-label');
+        })"""), 'the live indicator sits right after each device name')
+        geo = pg.evaluate("""(() => {
+            const fw = document.querySelector('.usn-node-fw .usn-node-icon').getBoundingClientRect();
+            const nets = [...document.querySelectorAll('.usn-net')].map(n => n.getBoundingClientRect());
+            const trunks = [...document.querySelectorAll('.usn-trunk')].map(w => w.getBoundingClientRect());
+            const br = [...document.querySelectorAll('.usn-branch')].map(w => w.getBoundingClientRect());
+            return { fwx: fw.x + fw.width / 2, sameX: new Set(nets.map(r => Math.round(r.x))).size === 1,
+                     stacked: nets.every((r, i) => i === 0 || r.y > nets[i - 1].y + nets[i - 1].height - 1),
+                     trunkX: trunks.map(r => r.x + r.width / 2), branchW: br.map(r => Math.round(r.width)),
+                     branchEnd: br.map((r, i) => Math.round(r.right - nets[i].x)) };
+        })()""")
+        check(geo['sameX'] and geo['stacked'], 'networks are stacked top to bottom in one column')
+        check(all(abs(x - geo['fwx']) < 2 for x in geo['trunkX']), f"the trunk runs straight down from the firewall ({geo['trunkX']} vs {geo['fwx']})")
+        check(all(w > 20 for w in geo['branchW']) and all(abs(e) <= 1 for e in geo['branchEnd']), f"each network has a branch to the trunk ({geo['branchW']})")
         pg.uncheck('[data-usn="live"]'); pg.wait_for_timeout(200)
         lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
         check(lanes == 0 and pg.locator('.usn-lane.is-on').count() == 0, 'data flow stops with live traffic off')
@@ -190,6 +207,16 @@ def main():
         check(pg.locator('.utm-svg path[data-cc="US"]').get_attribute('data-l') not in (None, '0'), 'countries with traffic are shaded')
         check(pg.locator('.utm-svg path.is-home[data-cc="AU"]').count() == 1, 'home country marked')
         check(pg.evaluate("Object.keys(window.UniSenseTrafficMap.state.flows).length") >= 10, 'arcs to the busiest countries')
+        # count what was actually painted (1.1.0 kept the flows in state but never drew them)
+        painted = pg.evaluate("""[...document.querySelectorAll('.utm-canvas')].map(c => {
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0;
+            for (let i = 3; i < d.length; i += 16) if (d[i] > 8) n++; return n; })""")
+        check(painted[0] > 1500, f'arcs are painted ({painted[0]} px sampled)')
+        check(painted[1] > 150, f'moving streaks are painted ({painted[1]} px sampled)')
+        rowref = pg.evaluate("window.__usRow = document.querySelector('.utm-row[data-cc=\"US\"]'), 1")
+        pg.wait_for_timeout(3500)
+        check(pg.evaluate("document.querySelector('.utm-row[data-cc=\"US\"]') === window.__usRow"), 'table rows are updated in place, not rebuilt')
+        check(pg.evaluate("!!document.querySelector('.utm-spark path.utm-spark-line').getAttribute('d')"), 'live throughput sparklines')
         check(pg.locator('img.utm-flag').count() >= 14 and pg.locator('img.utm-flag.is-missing').count() == 0, 'flags load')
         check('Unknown' in pg.inner_text('.utm-table') and 'AS0' not in pg.inner_text('.utm-table'), 'unknown country without a fake network')
         box = pg.locator('[data-utm="mapbox"]').bounding_box()

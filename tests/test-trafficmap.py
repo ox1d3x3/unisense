@@ -145,7 +145,8 @@ def main():
                UNISENSE_ASN_URL=asn_gz.as_uri(),
                UNISENSE_GEO_URL=(geo_dir.as_uri() + '/dbip-country-lite-{month}.csv.gz'),
                UNISENSE_IFCONFIG=str(ifc),
-               UNISENSE_STATES_FILE=str(sfile))
+               UNISENSE_STATES_FILE=str(sfile),
+               UNISENSE_CONFIG_XML=str(work / 'nope.xml'))
 
     print('status before any download')
     r = run(['status'], env)
@@ -214,6 +215,18 @@ def main():
     exp_in = (100000 + 168 + 12000) * 8 / 2.0
     t('rates per country', us and abs(us['in_bps'] - exp_in) / exp_in < 0.05, (us.get('in_bps'), exp_in))
     t('home country from the WAN address', r2['home'] == 'AU', r2['home'])
+    # behind CGNAT: no public address of its own -> the configured time zone
+    cg = work / 'ifconfig-cgnat'
+    cg.write_text('#!/bin/sh\necho "igc0: flags=8843<UP>"\necho "\tinet 100.70.1.2 netmask 0xffc00000"\n')
+    cg.chmod(0o755)
+    (work / 'config.xml').write_text('<?xml version="1.0"?>\n<opnsense><system><timezone>Australia/Perth</timezone></system></opnsense>\n')
+    (work / 'zone.tab').write_text('# comment\nAU\t-3157+11551\tAustralia/Perth\tWestern Australia\nUS\t+404251-0740023\tAmerica/New_York\tEastern\n')
+    cgenv = dict(env, UNISENSE_IFCONFIG=str(cg), UNISENSE_CONFIG_XML=str(work / 'config.xml'),
+                 UNISENSE_ZONE_TAB=str(work / 'zone.tab'), UNISENSE_FLOW_CACHE=str(work / 'cache-cg.json'))
+    rc = json.loads(run(['flows'], cgenv).stdout)
+    t('home country from the time zone behind CGNAT', rc['home'] == 'AU', rc['home'])
+    rc = json.loads(run(['flows'], dict(cgenv, UNISENSE_CONFIG_XML=str(work / 'nope.xml'))).stdout)
+    t('no home country without a public address or time zone', rc['home'] == '', rc['home'])
     rates = [x['in_bps'] + x['out_bps'] for x in r2['countries']]
     t('countries sorted by current rate', rates == sorted(rates, reverse=True) and r2['countries'][0]['cc'] == 'SG',
       [x['cc'] for x in r2['countries']])

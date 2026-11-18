@@ -221,7 +221,8 @@ select.selectpicker {
           flex: 0 1 auto;
 }
 .bs3.bootstrap-select .dropdown-toggle .filter-option {
-  padding-right: inherit;
+  /* UniSense: upstream "inherit" reserved the caret's space a second time */
+  padding-right: 0;
 }
 .input-group .bs3-has-addon.bootstrap-select .dropdown-toggle .filter-option {
   position: absolute;

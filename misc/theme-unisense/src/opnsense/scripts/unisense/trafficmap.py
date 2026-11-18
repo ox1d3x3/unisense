@@ -43,6 +43,8 @@ ASN_URL = os.environ.get('UNISENSE_ASN_URL', 'https://iptoasn.com/data/ip2asn-co
 GEO_URL = os.environ.get('UNISENSE_GEO_URL', 'https://download.db-ip.com/free/dbip-country-lite-{month}.csv.gz')
 PFCTL = os.environ.get('UNISENSE_PFCTL', '/sbin/pfctl')
 IFCONFIG = os.environ.get('UNISENSE_IFCONFIG', '/sbin/ifconfig')
+CONFIG_XML = os.environ.get('UNISENSE_CONFIG_XML', '/conf/config.xml')
+ZONE_TAB = os.environ.get('UNISENSE_ZONE_TAB', '/usr/share/zoneinfo/zone.tab')
 
 # record layouts (big-endian, so byte order == numeric order)
 GEO4 = struct.Struct('>II2s')            # start, end, country
@@ -396,6 +398,28 @@ def read_states():
     return r.stdout
 
 
+def timezone_country():
+    """
+    The country of the firewall's configured time zone (System > Settings >
+    General), for when it has no public address of its own (CGNAT, a modem
+    in router mode, ...). zone.tab maps 'Australia/Perth' -> 'AU'.
+    """
+    try:
+        with open(CONFIG_XML, errors='replace') as f:
+            m = re.search(r'<timezone>\s*([^<\s]+)\s*</timezone>', f.read(262144))
+        if not m:
+            return ''
+        tz = m.group(1)
+        with open(ZONE_TAB, errors='replace') as f:
+            for line in f:
+                parts = line.split('\t')
+                if len(parts) >= 3 and not line.startswith('#') and parts[2].strip() == tz:
+                    return parts[0].strip().upper()
+    except OSError:
+        pass
+    return ''
+
+
 def cmd_flows():
     now = time.time()
     own = local_addresses()
@@ -460,6 +484,8 @@ def cmd_flows():
                 home = look(a)[0]
                 if home:
                     break
+    if not home:
+        home = timezone_country()
 
     try:
         write_atomic(CACHE_FILE, json.dumps({'ts': now, 'c': {k: v[:2] for k, v in conns.items()}}))

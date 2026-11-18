@@ -21,10 +21,10 @@
   > thead > tr > th {
     border-bottom: 1px solid var(--us-line);
     color: var(--us-text-3);
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
-    letter-spacing: .04em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;   // sentence case, like the data grids
     white-space: nowrap;
   }
 

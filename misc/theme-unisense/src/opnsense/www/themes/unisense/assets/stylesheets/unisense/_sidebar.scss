@@ -154,8 +154,10 @@ $us-l3-text:  66px;   // where level-3 text starts (under the level-2 label)
   > div > div > div:first-child {
     display: block !important;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    // long labels ("Dnsmasq DNS & DHCP") wrap instead of being cut off
+    white-space: normal;
+    overflow-wrap: break-word;
+    line-height: 18px;
   }
   > div > div > div:last-child {
     display: block !important;
@@ -185,8 +187,8 @@ $us-l3-text:  66px;   // where level-3 text starts (under the level-2 label)
   color: var(--us-rail-text-2);
   font-size: 13px;
   line-height: 18px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 
   &:hover { color: var(--us-rail-text-hi); }
 }

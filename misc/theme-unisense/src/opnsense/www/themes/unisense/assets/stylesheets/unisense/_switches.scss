@@ -1,0 +1,88 @@
+// ===========================================================================
+// UniSense — switches
+//
+// Core draws on/off switches with Font Awesome toggle glyphs ("advanced mode",
+// "full help", log filters ...) and grid "enabled" toggles with check-square
+// glyphs. At text size they are tiny (18 x 16 px). Draw them as real switches
+// instead: same elements, same classes core toggles, no markup changes.
+// ===========================================================================
+
+$us-sw-w: 36px;
+$us-sw-h: 20px;
+$us-sw-k: 16px;   // knob
+
+%us-switch {
+  position: relative;
+  display: inline-block !important;
+  flex: 0 0 auto;
+  width: $us-sw-w !important;
+  height: $us-sw-h !important;
+  margin: 0 2px;
+  border-radius: 999px;
+  background: var(--us-line-strong);
+  font-size: 0 !important;      // hide the glyph; the knob is ::before
+  line-height: 0 !important;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color .15s linear;
+
+  &::before {
+    content: "" !important;
+    position: absolute;
+    top: ($us-sw-h - $us-sw-k) / 2;
+    left: ($us-sw-h - $us-sw-k) / 2;
+    width: $us-sw-k;
+    height: $us-sw-k;
+    border-radius: 50%;
+    background: var(--us-on-accent);
+    box-shadow: var(--us-shadow-1);
+    transition: transform .18s cubic-bezier(.2, 0, 0, 1);
+  }
+}
+%us-switch-on {
+  background: var(--us-accent);
+  &::before { transform: translateX($us-sw-w - $us-sw-h); }
+}
+
+.fa.fa-toggle-off,
+.fa.fa-toggle-on,
+.command-toggle.fa-square-o,
+.command-toggle.fa-check-square-o {
+  @extend %us-switch;
+}
+.fa.fa-toggle-on,
+.command-toggle.fa-check-square-o {
+  @extend %us-switch-on;
+}
+// core colours these red/green: the switch's own colours carry the state
+.fa.fa-toggle-on.text-success,
+.fa.fa-toggle-off.text-danger { color: inherit !important; }
+
+a:hover > .fa.fa-toggle-off,
+.fa.fa-toggle-off:hover,
+.command-toggle.fa-square-o:hover { background: var(--us-text-3); }
+a:focus-visible > .fa.fa-toggle-off,
+a:focus-visible > .fa.fa-toggle-on { outline: 2px solid var(--us-accent); outline-offset: 2px; }
+
+// "full help" / "advanced mode" labels next to the switch
+.fa.fa-toggle-on + *,
+.fa.fa-toggle-off + * { vertical-align: middle; }
+
+// read-only status squares in grids (boolean formatter) -> status dots
+.tabulator-cell .fa.fa-square.text-success,
+.tabulator-cell .fa.fa-square.text-danger,
+.tabulator-cell .fa.fa-square.text-muted {
+  width: 10px !important;
+  height: 10px;
+  border-radius: 50%;
+  font-size: 0 !important;
+  vertical-align: middle;
+  &::before { content: none !important; }
+  &.text-success { background: var(--us-ok); box-shadow: 0 0 0 3px var(--us-ok-soft); }
+  &.text-danger { background: var(--us-crit); box-shadow: 0 0 0 3px var(--us-crit-soft); }
+  &.text-muted { background: var(--us-line-strong); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fa.fa-toggle-off, .fa.fa-toggle-on, .command-toggle { transition: none; &::before { transition: none; } }
+}

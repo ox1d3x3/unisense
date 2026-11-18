@@ -162,25 +162,27 @@
 .usn-stat-value small { color: var(--usn-text-3); font-size: 13px; font-weight: 500; }
 .usn-stat-value [data-usn-total] { font-size: 17px; white-space: nowrap; }
 .usn-stat-sub {
-  overflow: hidden;
   color: var(--usn-text-3);
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
+.usn-nw { white-space: nowrap; }
 
-/* ------------------------------------------------------------- topology */
+/* ------------------------------------------------------------- topology
+   A left-aligned tree. The trunk runs down through the centre of the node
+   icons (35px from the left edge); every network hangs off it on its own
+   branch, so the map reads top to bottom, devices left to right. */
 .usn-top {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .usn-node {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 260px;
+  min-width: 280px;
   max-width: 100%;
   padding: 12px 16px;
   border: 1px solid var(--usn-line);
@@ -189,7 +191,7 @@
   box-shadow: var(--usn-shadow);
 }
 .usn-node-text { display: flex; flex-direction: column; min-width: 0; }
-.usn-node-text > b { color: var(--usn-heading); font-size: 15px; font-weight: 600; }
+.usn-node-text > b { color: var(--usn-heading); font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .usn-node-text > small { color: var(--usn-text-3); font-size: 12px; }
 .usn-node-fw .usn-node-icon { background: var(--usn-accent); color: #ffffff; }
 
@@ -203,6 +205,7 @@
 .usn-gw,
 .usn-wan {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   color: var(--usn-text-2);
@@ -214,24 +217,24 @@
 
 .usn-link {
   position: relative;
-  width: 10px;
+  width: 70px;
   height: 34px;
 }
-.usn-link-down { height: 30px; margin: 0 auto; }
+.usn-link > .usn-wire { left: 30px; }
 
-/* ---------------------------------------------------- live data-flow wires
-   A static connector plus two lanes of dots: download (accent) flows away
-   from the Internet, upload (green) flows towards it. Lanes are real elements
-   moved with transform by the Web Animations API (networkmap.js), so the GPU
-   composites them; the traffic rate sets the speed via updatePlaybackRate().
-   One dot every 14px — FLOW_PERIOD in networkmap.js. */
+/* ------------------------------------------------- live data-flow "strings"
+   A static 2px line plus two lanes of glowing streaks: download (accent)
+   travels away from the Internet, upload (green) travels towards it. Lanes
+   are real elements moved with transform by the Web Animations API
+   (networkmap.js), so the GPU composites them and nothing is repainted per
+   frame; the traffic rate sets the speed via updatePlaybackRate().
+   One streak every 46px — FLOW_PERIOD in networkmap.js. */
 .usn-wire {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
+  left: 0;
   width: 10px;
-  margin-left: -5px;
   overflow: hidden;
   pointer-events: none;
 }
@@ -242,85 +245,67 @@
   bottom: 0;
   left: 4px;
   width: 2px;
+  border-radius: 1px;
   background: var(--usn-line);
 }
 .usn-lane {
   position: absolute;
-  top: -14px;                   /* one period of overhang for a seamless loop */
-  bottom: -14px;
+  top: -46px;                   /* one period of overhang for a seamless loop */
+  bottom: -46px;
   width: 4px;
+  border-radius: 2px;
   opacity: 0;
-  transition: opacity .3s linear;
+  transition: opacity .35s linear;
   will-change: transform;
 }
-.usn-lane-down {
-  left: 0;
-  background: radial-gradient(circle at 50% 50%, var(--usn-accent) 0 1.8px, transparent 2.2px) 0 0 / 4px 14px repeat-y;
-}
-.usn-lane-up {
-  left: 6px;
-  background: radial-gradient(circle at 50% 50%, var(--usn-ok) 0 1.8px, transparent 2.2px) 0 0 / 4px 14px repeat-y;
-}
 .usn-lane.is-on { opacity: 1; }
-.usn-wire-net {                 /* bus -> network card */
-  top: -26px;
-  bottom: auto;
-  left: 34px;
-  height: 25px;
-}
-
-/* the horizontal bus above the networks, split at the firewall */
-.usn-bus {
-  position: absolute;
-  top: -6px;
-  left: 0;
-  right: 0;
-  height: 10px;
-  pointer-events: none;
-}
-.usn-bus::before {
-  content: "";
-  position: absolute;
-  top: 4px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--usn-line);
-}
-.usn-bus-half {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 50%;
-  overflow: hidden;
-}
-.usn-bus-half.is-left { left: 0; }
-.usn-bus-half.is-right { right: 0; }
-.usn-lane-x {
-  top: auto;
-  bottom: auto;
-  left: -14px;
-  right: -14px;
-  width: auto;
-  height: 4px;
-}
+/* vertical: download streaks head down (bright end at the bottom),
+   upload streaks head up (bright end at the top) */
 .usn-lane-dl {
-  top: 0;
-  background: radial-gradient(circle at 50% 50%, var(--usn-accent) 0 1.8px, transparent 2.2px) 0 0 / 14px 4px repeat-x;
+  left: 3px;
+  background:
+    linear-gradient(to bottom, transparent 0 26%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 64%, var(--usn-accent) 96%, transparent 100%) 1px 0 / 2px 46px repeat-y,
+    linear-gradient(to bottom, transparent 0 62%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 94%, transparent 100%) 0 0 / 4px 46px repeat-y;
 }
 .usn-lane-ul {
-  top: 6px;
-  background: radial-gradient(circle at 50% 50%, var(--usn-ok) 0 1.8px, transparent 2.2px) 0 0 / 14px 4px repeat-x;
+  left: 3px;
+  background:
+    linear-gradient(to top, transparent 0 26%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 64%, var(--usn-ok) 96%, transparent 100%) 1px 0 / 2px 46px repeat-y,
+    linear-gradient(to top, transparent 0 62%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 94%, transparent 100%) 0 0 / 4px 46px repeat-y;
 }
+/* horizontal: download heads right (towards the devices), upload left */
+.usn-wire.is-x {
+  bottom: auto;
+  height: 10px;
+}
+.usn-wire.is-x::before { top: 4px; bottom: auto; left: 0; right: 0; width: auto; height: 2px; }
+.usn-wire.is-x .usn-lane { top: auto; bottom: auto; left: -46px; right: -46px; width: auto; height: 4px; }
+.usn-wire.is-x .usn-lane-dl {
+  top: 3px;
+  background:
+    linear-gradient(to right, transparent 0 26%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 64%, var(--usn-accent) 96%, transparent 100%) 0 1px / 46px 2px repeat-x,
+    linear-gradient(to right, transparent 0 62%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 94%, transparent 100%) 0 0 / 46px 4px repeat-x;
+}
+.usn-wire.is-x .usn-lane-ul {
+  top: 3px;
+  background:
+    linear-gradient(to left, transparent 0 26%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 64%, var(--usn-ok) 96%, transparent 100%) 0 1px / 46px 2px repeat-x,
+    linear-gradient(to left, transparent 0 62%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 94%, transparent 100%) 0 0 / 46px 4px repeat-x;
+}
+
+/* trunk segment: from the previous card (or the firewall) down past this
+   card; the last one stops at its branch */
+.usn-trunk { top: -18px; bottom: -1px; left: -40px; }
+.usn-net:last-child > .usn-trunk { bottom: auto; height: 54px; }
+.usn-branch { top: 26px; left: -35px; width: 35px; }
 
 /* --------------------------------------------------------------- networks */
 .usn-nets {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  align-items: start;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   position: relative;
-  padding-top: 26px;
+  padding: 17px 0 0 70px;
 }
 
 .usn-net {
@@ -359,7 +344,7 @@
 
 .usn-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px;
   padding: 12px;
 }
@@ -399,12 +384,22 @@
   color: var(--usn-text-2);
   font-size: 15px;
 }
-.usn-ripple {                  /* activity ring around the status dot */
+/* live indicator right after the device name: a green dot, with a soft
+   ripple while the device is moving traffic */
+.usn-live-ind {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 8px;
+  height: 8px;
+}
+.usn-live-ind .usn-dot { width: 8px; height: 8px; }
+.usn-live-ind.is-on .usn-dot { box-shadow: 0 0 0 3px var(--usn-ok-soft); }
+.usn-ripple {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 12px;
-  height: 12px;
+  inset: 0;
   border-radius: 50%;
   background: var(--usn-ok, #38cc65);
   opacity: 0;
@@ -414,27 +409,35 @@
   animation: usn-ripple 1.8s cubic-bezier(.2, 0, 0, 1) infinite;
 }
 @keyframes usn-ripple {
-  0%   { opacity: .55; transform: scale(.6); }
-  100% { opacity: 0;   transform: scale(2.4); }
+  0%   { opacity: .6; transform: scale(1); }
+  100% { opacity: 0;  transform: scale(3); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .usn-live .usn-tile.is-active .usn-ripple { animation: none; opacity: .35; }
-}
-.usn-tile-icon .usn-dot {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  border: 2px solid var(--usn-surface-2);
+  .usn-live .usn-tile.is-active .usn-ripple { animation: none; }
 }
 .usn-tile-text { display: flex; flex-direction: column; min-width: 0; }
-.usn-tile-name,
-.usn-tile-meta {
+.usn-tile-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--usn-heading);
+  font-size: 13px;
+  font-weight: 600;
+}
+.usn-tile-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.usn-tile-name { color: var(--usn-heading); font-size: 13px; font-weight: 600; }
-.usn-tile-meta { color: var(--usn-text-3); font-size: 11.5px; }
+.usn-tile-meta {
+  overflow: hidden;
+  color: var(--usn-text-3);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .usn-tile-rate {
   grid-column: 2;
   min-width: 0;
@@ -501,7 +504,7 @@
 .usn-chip-neutral { background: var(--usn-neutral-soft); color: var(--usn-text-2); }
 
 .usn-empty {
-  padding: 18px 14px;
+  padding: 12px 14px;
   color: var(--usn-text-3);
   font-size: 13px;
   text-align: center;
@@ -550,13 +553,16 @@
 @media (max-width: 767px) {
   .usn-search { flex: 1 1 100%; }
   .usn-tools { margin-left: 0; }
-  .usn-nets { grid-template-columns: 1fr; }
+  .usn-nets { padding-left: 52px; }
+  .usn-link { width: 52px; }
+  .usn-trunk { left: -22px; }
+  .usn-branch { left: -17px; width: 17px; }
   .usn-node { min-width: 0; width: 100%; }
-  .usn-tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .usn-tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 10px; }
   .usn-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .usn-stat { padding: 10px 12px; gap: 10px; }
   .usn-stat-icon { width: 30px; height: 30px; font-size: 13px; }
   .usn-stat-value { font-size: 18px; }
-  .usn-stat-value [data-usn-total] { font-size: 14px; white-space: normal; }
+  .usn-stat-value [data-usn-total] { font-size: 14px; white-space: normal; line-height: 1.25; }
   .usn-stat-body { overflow: hidden; }
 }
