@@ -284,6 +284,8 @@ python3 interact.py --core /tmp/core      # appearance menu, accents, charts, se
 
 CI runs all of this against OPNsense 25.7, 26.1 and 26.7 on every push and uploads the screenshots as an artifact.
 
+**Releasing:** bump `misc/theme-unisense/src/opnsense/www/themes/unisense/VERSION`, add `.github/release-notes/<version>.md` and push to `main`. When every check passes, CI tags the commit `v<version>` and publishes the release with `unisense.tar.gz`, `install.sh` and `SHA256SUMS`. A version that is already released is skipped.
+
 ---
 
 ## Contributing
