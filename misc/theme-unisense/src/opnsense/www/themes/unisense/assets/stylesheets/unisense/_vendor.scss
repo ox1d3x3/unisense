@@ -13,7 +13,7 @@ html .tokenize > .tokens-container {
   border-radius: var(--us-radius-sm);
   background-color: var(--us-input-bg);
   color: var(--us-text);
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .1s linear;
 
   &.disabled { background-color: var(--us-input-disabled); }
 

@@ -260,8 +260,10 @@ class Handler(SimpleHTTPRequestHandler):
                    'opt1': ['192.168.20.15']}
             out = {}
             for intf in path.rsplit('/', 1)[1].split(','):
+                # like real traffic: devices come and go between polls
                 out[intf] = {'records': [{'address': ip, 'rate_bits_in': random.randint(20000, 90000000),
-                                          'rate_bits_out': random.randint(10000, 9000000)} for ip in ips.get(intf, [])]}
+                                          'rate_bits_out': random.randint(10000, 9000000)}
+                                         for ip in ips.get(intf, []) if random.random() < 0.6]}
             return self._json(out)
         if path == '/api/diagnostics/firewall/stream_log':
             rules = [('r1', 'Default deny / state violation rule', 'block', 'wan'),

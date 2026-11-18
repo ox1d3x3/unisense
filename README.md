@@ -105,7 +105,14 @@ That's it: the theme and the Network Map page are installed and the GUI switches
 - Dashboard widgets as cards; gauges and the CPU graph follow the accent colour and recolour when you switch modes
 - Classic PHP pages (bare inputs, `opnsense_standard_table_form` tables), the date picker, tokenizer, jqTree and nv.d3 charts
 - Collapsed sidebar (core's icon rail with hover fly-outs) and the phone drawer
-- Sign-in page
+- Sign-in page: app-icon card, show-password button, Caps Lock hint, busy state while signing in
+
+**Smooth on big screens**
+- Motion only on transform and opacity (GPU-composited); menu highlights are instant, so nothing trails the pointer
+- Opaque top bar (no backdrop blur), no fixed backgrounds, compressed CSS
+- Light/dark switches in a single frame instead of hundreds of colour fades; dashboard widgets no longer slide around while they load
+- Network Map tiles keep their size while traffic comes and goes, and periodic refreshes only touch what changed
+- Honours *reduce motion* in the OS; measured with `tests/harness/perf.py` against the stock theme
 
 **Safe by design**
 - CSS and one small, defensive script only — no core files are modified, no templates are overridden
@@ -280,7 +287,8 @@ git clone --depth 1 -b stable/26.7 https://github.com/opnsense/core /tmp/core
 cd tests/harness
 python3 render.py   --core /tmp/core      # build the pages
 python3 shoot.py    --core /tmp/core      # screenshots, light/dark, desktop/phone; fails on JS errors or missing files
-python3 interact.py --core /tmp/core      # appearance menu, accents, charts, selects, dialogs, drawer, tablet widths, Network Map
+python3 interact.py --core /tmp/core      # appearance menu, accents, charts, selects, dialogs, drawer, tablet widths, Network Map, sign-in, footer
+python3 perf.py     --core /tmp/core      # frame times, style/layout/paint cost while scrolling, hovering, toggling the rail, switching modes
 ```
 
 CI runs all of this against OPNsense 25.7, 26.1 and 26.7 on every push and uploads the screenshots as an artifact.

@@ -140,6 +140,19 @@
         return (i === 0 ? Math.round(bits) : bits.toFixed(bits >= 100 ? 0 : 1)) + units[i];
     }
 
+    /*
+     * Write markup only when it changed: periodic refreshes then cost nothing
+     * when the network is unchanged, and hover/focus stay where they are.
+     */
+    function setHtml(el, html) {
+        if (el && el.__usnHtml !== html) {
+            el.innerHTML = html;
+            el.__usnHtml = html;
+            return true;
+        }
+        return false;
+    }
+
     function rows(data) {
         if (!data) {
             return [];
@@ -445,12 +458,24 @@
             }
             S.rates = rates;
             updateRates();
+            pulseLive();
         }).then(function () {
             trafficBusy = false;
             if (S.live) {
                 trafficTimer = setTimeout(pollTraffic, 4000);
             }
         });
+    }
+
+    function pulseLive() {
+        var dot = root.querySelector('.usn-live-dot');
+        var reduce = false;
+        try {
+            reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        } catch (e) { /* ignore */ }
+        if (dot && typeof dot.animate === 'function' && !reduce) {
+            dot.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 700, easing: 'ease-out' });
+        }
     }
 
     function deviceRate(d) {
@@ -484,7 +509,7 @@
                 return;
             }
             var r = deviceRate(d);
-            slot.innerHTML = S.live ? rateHtml(r, true) : '';
+            setHtml(slot, S.live ? rateHtml(r, true) : '');
         });
         Object.keys(S.devices).forEach(function (mac) {
             var r = deviceRate(S.devices[mac]);
@@ -493,7 +518,7 @@
         });
         var tot = root.querySelector('[data-usn-total]');
         if (tot) {
-            tot.innerHTML = S.live ? (esc(fmtBits(total.in)) + ' <small>/</small> ' + esc(fmtBits(total.out))) : '&mdash;';
+            setHtml(tot, S.live ? (esc(fmtBits(total.in)) + ' <small>/</small> ' + esc(fmtBits(total.out))) : '&mdash;');
         }
         root.querySelectorAll('[data-usn-net-rate]').forEach(function (el) {
             var id = el.getAttribute('data-usn-net-rate');
@@ -506,8 +531,9 @@
                     r.out += x.out;
                 }
             });
-            el.innerHTML = S.live ? rateHtml(r) : '';
+            setHtml(el, S.live ? rateHtml(r) : '');
         });
+        root.classList.toggle('usn-live', !!S.live);
     }
 
     /* ------------------------------------------------------------- render */
@@ -631,7 +657,7 @@
             html += '<button type="button" role="tab" data-filter="' + esc(i.id) + '" class="' + (on ? 'is-active' : '') +
                 '" aria-selected="' + on + '">' + esc(i.name) + '</button>';
         });
-        box.innerHTML = html;
+        setHtml(box, html);
     }
 
     function renderStats() {
@@ -646,7 +672,7 @@
             var s = String(g.status || '').toLowerCase();
             return s === 'none' || s === 'online';
         }).length;
-        box.innerHTML =
+        setHtml(box,
             stat('fa-laptop', t('devices', 'Devices'), online + ' <small>' + esc(t('online', 'online').toLowerCase()) + '</small>',
                 (macs.length - online) + ' ' + esc(t('offline', 'offline').toLowerCase())) +
             stat('fa-sitemap', t('networks', 'Networks'), String(lans.length),
@@ -655,12 +681,14 @@
                 S.gateways.map(function (g) { return esc(g.name); }).join(' · ')) +
             stat('fa-gauge-high', t('traffic', 'Traffic'), '<span data-usn-total>&mdash;</span>',
                 '<i class="fa fa-arrow-down"></i> / <i class="fa fa-arrow-up"></i>' +
-                (S.updated ? ' · ' + esc(t('updated', 'Updated')) + ' ' + esc(S.updated.toLocaleTimeString()) : ''));
+                (S.updated ? ' · ' + esc(t('updated', 'Updated')) + ' ' + esc(S.updated.toLocaleTimeString()) : ''), 'usn-stat-traffic'));
+        updateRates();
     }
 
-    function stat(icon, title, value, sub) {
-        return '<div class="usn-stat"><div class="usn-stat-icon"><i class="fa ' + icon + '" aria-hidden="true"></i></div>' +
-            '<div class="usn-stat-body"><div class="usn-stat-title">' + esc(title) + '</div>' +
+    function stat(icon, title, value, sub, cls) {
+        return '<div class="usn-stat' + (cls ? ' ' + cls : '') + '"><div class="usn-stat-icon"><i class="fa ' + icon + '" aria-hidden="true"></i></div>' +
+            '<div class="usn-stat-body"><div class="usn-stat-title">' + esc(title) +
+            (cls === 'usn-stat-traffic' ? '<span class="usn-live-dot" aria-hidden="true"></span>' : '') + '</div>' +
             '<div class="usn-stat-value">' + value + '</div><div class="usn-stat-sub">' + (sub || '&nbsp;') + '</div></div></div>';
     }
 
@@ -683,7 +711,7 @@
             return;
         }
         if (S.failed) {
-            map.innerHTML = '<div class="alert alert-warning">' + esc(t('error', 'Could not load network data.')) + '</div>';
+            setHtml(map, '<div class="alert alert-warning">' + esc(t('error', 'Could not load network data.')) + '</div>');
             return;
         }
 
@@ -761,7 +789,16 @@
         if (!nets.length && !shown) {
             html += '<div class="usn-empty">' + esc(t('noDevices', 'No devices found.')) + '</div>';
         }
-        map.innerHTML = html;
+        var focused = document.activeElement && map.contains(document.activeElement) ?
+            document.activeElement.getAttribute('data-mac') : null;
+        if (setHtml(map, html)) {
+            if (focused) {
+                var again = map.querySelector('[data-mac="' + focused.replace(/"/g, '') + '"]');
+                if (again) {
+                    again.focus({ preventScroll: true });
+                }
+            }
+        }
         updateRates();
     }
 

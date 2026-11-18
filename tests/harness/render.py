@@ -3,6 +3,7 @@
 
 Usage: render.py --core /path/to/opnsense/core --out site/
 """
+import os
 import argparse
 import json
 import re
@@ -14,6 +15,7 @@ from menu import build_menu
 HERE = Path(__file__).resolve().parent
 PLUGIN = HERE.parents[1] / 'misc/theme-unisense/src/opnsense'
 THEME = PLUGIN / 'www/themes/unisense'
+THEME_NAME = os.environ.get('UNISENSE_HARNESS_THEME', 'unisense')  # 'opnsense' renders the stock theme (perf baseline)
 
 
 def php_list(src, func):
@@ -68,7 +70,7 @@ def main():
     for name, p in pages.items():
         menu = build_menu(app / 'models', p['url'], [PLUGIN / 'mvc/app/models'])
         ctx = dict(
-            ui_theme='unisense', langcode='en', headTitle=p['title'], title=p['title'],
+            ui_theme=THEME_NAME, langcode='en', headTitle=p['title'], title=p['title'],
             system_hostname='opnsense', system_domain='home.arpa', session_username='root',
             css_files=p.get('css', css_files), javascript_files=p.get('js', js_files),
             menuSystem=menu, menuFavorites=json.dumps([]), menuSelectedUrl=p['url'],
@@ -87,7 +89,7 @@ def main():
     for name in ['legacy', 'login']:
         menu = build_menu(app / 'models', '/system_general.php', [PLUGIN / 'mvc/app/models'])
         tpl = env.get_template(f'{name}.html')
-        html = tpl.render(menuSystem=menu, ui_theme='unisense')
+        html = tpl.render(menuSystem=menu, ui_theme=THEME_NAME)
         (out / 'pages' / f'{name}.html').write_text(html)
         print('rendered', name)
 

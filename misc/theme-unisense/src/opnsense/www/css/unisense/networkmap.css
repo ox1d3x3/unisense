@@ -291,7 +291,7 @@
   border-radius: var(--usn-radius-sm);
   background: var(--usn-surface-2);
   cursor: pointer;
-  transition: border-color .12s, background-color .12s, transform .12s;
+  transition: border-color .1s linear, background-color .1s linear;
 }
 .usn-tile:hover,
 .usn-tile:focus-visible {
@@ -337,6 +337,27 @@
   white-space: nowrap;
 }
 .usn-tile-rate:empty { display: none; }
+/* live traffic on: every tile keeps a rate line, so tiles never change height
+   (and the grid never jumps) when a device starts or stops sending */
+.usn-live .usn-tile-rate,
+.usn-live .usn-tile-rate:empty { display: block; height: 16px; line-height: 16px; }
+.usn-live .usn-tile-rate .usn-rate { line-height: 16px; }
+.usn-live .usn-net-rate { display: block; min-height: 17px; }
+
+/* live indicator next to the traffic figures: a static dot that flashes
+   once (Web Animations, opacity only) whenever new traffic data arrives —
+   no endless animation keeping the page busy */
+.usn-live-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--usn-ok, #38cc65);
+  vertical-align: 1px;
+}
+.usn-live .usn-live-dot { display: inline-block; }
+
 
 .usn-dot {
   display: inline-block;

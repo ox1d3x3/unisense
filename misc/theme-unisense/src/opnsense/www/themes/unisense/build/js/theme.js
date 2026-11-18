@@ -9,7 +9,9 @@
  *   1. apply the saved colour mode (auto / light / dark) before first paint,
  *   2. apply the saved accent colour,
  *   3. add an appearance menu to the top bar,
- *   4. keep Chart.js dashboard widgets in step with the colour mode.
+ *   4. keep Chart.js dashboard widgets in step with the colour mode,
+ *   5. motion helpers (smooth mode switch, no layout animation while loading),
+ *   6. the author credit in the footer and the sign-in page polish.
  *
  * Nothing here is required for the GUI to work: with JavaScript disabled or
  * storage blocked the theme simply follows the operating system.
@@ -17,6 +19,8 @@
 (function () {
     'use strict';
 
+    var VERSION = '1.0.2';   /* stamped from VERSION by scripts/build.mjs */
+    var REPO_URL = 'https://github.com/ox1d3x3/unisense';
     var MODE_KEY = 'unisense.mode';
     var ACCENT_KEY = 'unisense.accent';
     var MODES = ['auto', 'light', 'dark'];
@@ -109,6 +113,8 @@
     applyMode(savedMode());
     applyAccent(savedAccent());
     root.classList.add('unisense');
+    /* no layout animation (dashboard grid etc.) until the page has settled */
+    root.classList.add('us-loading');
 
     /* ----------------------------------------------------------- charts */
     function cssVar(name) {
@@ -314,6 +320,13 @@
         }
     }
 
+    /* inside a colour switch: recolour synchronously so the new snapshot is right */
+    function modeChangedNow() {
+        paletteCache = {};
+        refreshCharts();
+        updateMenuState();
+    }
+
     function modeChanged() {
         paletteCache = {};
         /* wait one frame so the new custom properties are computed */
@@ -324,16 +337,38 @@
         });
     }
 
+    /*
+     * Switching colours restyles every element. Rather than hundreds of
+     * per-element colour transitions (janky on big pages) the change is
+     * applied in one frame with transitions switched off. (A View Transitions
+     * cross-fade was measured too: its snapshots cost more frames than the
+     * single restyle itself.)
+     */
+    function switchSmoothly(change) {
+        root.classList.add('us-switching');
+        change();
+        var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+        raf(function () {
+            raf(function () {
+                root.classList.remove('us-switching');
+            });
+        });
+    }
+
     function setMode(m) {
         write(MODE_KEY, m === 'auto' ? null : m);
-        applyMode(m);
-        modeChanged();
+        switchSmoothly(function () {
+            applyMode(m);
+            modeChangedNow();
+        });
     }
 
     function setAccent(a) {
         write(ACCENT_KEY, a === DEFAULT_ACCENT ? null : a);
-        applyAccent(a);
-        modeChanged();
+        switchSmoothly(function () {
+            applyAccent(a);
+            modeChangedNow();
+        });
     }
 
     /* system theme changes while in auto mode */
@@ -548,6 +583,121 @@
         updateMenuState();
     }
 
+    /* ------------------------------------------------- collapsed rail */
+    /*
+     * core opnsense_theme.js toggles .col-sidebar-left on #navigation; mirror
+     * it on <html> so the top bar can follow with a plain class selector
+     * (a body:has() selector is re-checked on every DOM change).
+     */
+    function mirrorRail() {
+        var nav = document.getElementById('navigation');
+        if (!nav) {
+            return;
+        }
+        var sync = function () {
+            root.classList.toggle('us-rail-collapsed', nav.classList.contains('col-sidebar-left'));
+        };
+        sync();
+        if (window.MutationObserver) {
+            new MutationObserver(sync).observe(nav, { attributes: true, attributeFilter: ['class'] });
+        }
+    }
+
+    /* ----------------------------------------------------------- credit */
+    function creditHtml() {
+        return 'Author <a href="' + REPO_URL + '" target="_blank" rel="noopener">Ox1d3x3</a>' +
+            ' <span class="us-credit-x" aria-hidden="true">&times;</span> UniSense v' + VERSION;
+    }
+
+    function mountCredit() {
+        if (document.querySelector('.us-credit')) {
+            return;
+        }
+        var foot = document.querySelector('.page-foot > .container-fluid') || document.querySelector('.page-foot');
+        var credit = el('span', { 'class': 'us-credit' }, creditHtml());
+        if (foot) {
+            foot.classList.add('us-foot');
+            foot.appendChild(credit);
+        } else if (document.body && document.body.classList.contains('page-login')) {
+            credit.classList.add('us-credit-fixed');
+            document.body.appendChild(credit);
+        }
+    }
+
+    /* ---------------------------------------------------- sign-in page */
+    var SVG_EYE = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M1.8 10S4.8 4.2 10 4.2 18.2 10 18.2 10 15.2 15.8 10 15.8 1.8 10 1.8 10z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+    var SVG_EYE_OFF = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3l14 14M8.2 4.5A8.6 8.6 0 0 1 10 4.2c5.2 0 8.2 5.8 8.2 5.8a14 14 0 0 1-2.4 3.1M5.6 6A13.6 13.6 0 0 0 1.8 10S4.8 15.8 10 15.8c1.4 0 2.6-.4 3.7-1M8.3 8.4a2.6 2.6 0 0 0 3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    function enhanceLogin() {
+        var card = document.querySelector('body.page-login .login-modal-container');
+        var content = card && card.querySelector('.login-modal-content');
+        var form = content && content.querySelector('form');
+        if (!form || card.classList.contains('us-login-card')) {
+            return;
+        }
+        card.classList.add('us-login-card');
+        root.classList.add('us-login');
+
+        /* brand block: app icon, product, the host being signed in to */
+        var logo = card.querySelector('.login-modal-head img');
+        var icon = logo ? logo.getAttribute('src').replace(/default-logo\.svg/, 'icon-logo.svg') : '';
+        var host = (window.location && window.location.hostname) || '';
+        var brand = el('div', { 'class': 'us-login-brand' });
+        brand.innerHTML = (icon && icon.indexOf('icon-logo.svg') !== -1 ? '<img class="us-login-icon" alt="" src="' + icon.replace(/"/g, '&quot;') + '">' : '') +
+            '<div class="us-login-title">UniSense</div>' +
+            '<div class="us-login-sub"></div>';
+        brand.querySelector('.us-login-sub').textContent = host ? 'Sign in to ' + host : 'Sign in to continue';
+        content.insertBefore(brand, content.firstChild);
+
+        /* the server-side error line: only show it when it has text */
+        var errors = content.querySelector('#inputerrors');
+        if (errors && (errors.textContent || '').replace(/\u00a0/g, ' ').trim()) {
+            errors.classList.add('us-has-error');
+        }
+
+        /* password: show/hide and Caps Lock hint */
+        var pwd = form.querySelector('#passwordfld');
+        if (pwd && pwd.parentNode) {
+            var wrap = el('div', { 'class': 'us-pwd' });
+            pwd.parentNode.insertBefore(wrap, pwd);
+            wrap.appendChild(pwd);
+            var eye = el('button', { 'type': 'button', 'class': 'us-pwd-toggle', 'aria-label': 'Show password', 'tabindex': '3' }, SVG_EYE);
+            wrap.appendChild(eye);
+            eye.addEventListener('click', function () {
+                var show = pwd.getAttribute('type') === 'password';
+                pwd.setAttribute('type', show ? 'text' : 'password');
+                eye.innerHTML = show ? SVG_EYE_OFF : SVG_EYE;
+                eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                pwd.focus();
+            });
+            var caps = el('div', { 'class': 'us-caps', 'aria-live': 'polite' }, 'Caps Lock is on');
+            caps.hidden = true;
+            wrap.parentNode.appendChild(caps);
+            var onKey = function (e) {
+                if (e.getModifierState) {
+                    caps.hidden = !e.getModifierState('CapsLock');
+                }
+            };
+            pwd.addEventListener('keydown', onKey);
+            pwd.addEventListener('keyup', onKey);
+            pwd.addEventListener('blur', function () {
+                caps.hidden = true;
+            });
+        }
+
+        /*
+         * busy state on submit. The button is NOT disabled: a disabled submit
+         * button is left out of the form data and core checks for "login".
+         */
+        form.addEventListener('submit', function () {
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) {
+                btn.classList.add('us-busy');
+                btn.setAttribute('aria-busy', 'true');
+            }
+        });
+    }
+
     /* ------------------------------------------------------------- boot */
     function onReady() {
         installChartPlugin();
@@ -556,10 +706,23 @@
         try {
             mountMenu();
         } catch (e) { /* cosmetic only */ }
-        /* enable transitions only after the first paint, avoiding a fade on load */
+        try {
+            mirrorRail();
+            mountCredit();
+            enhanceLogin();
+        } catch (e) { /* cosmetic only */ }
+    }
+
+    /* the dashboard grid settles while widgets load: animate only afterwards */
+    function settled() {
         setTimeout(function () {
-            root.classList.add('us-ready');
-        }, 150);
+            root.classList.remove('us-loading');
+        }, 1500);
+    }
+    if (document.readyState === 'complete') {
+        settled();
+    } else {
+        window.addEventListener('load', settled);
     }
 
     if (document.readyState === 'loading') {

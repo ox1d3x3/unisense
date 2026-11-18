@@ -77,14 +77,4 @@ pre {
 }
 ::-webkit-scrollbar-corner { background: transparent; }
 
-// smooth colour changes when switching mode (enabled by theme.js after load)
-html.us-ready body,
-html.us-ready .page-head .navbar,
-html.us-ready .content-box,
-html.us-ready .grid-stack-item-content {
-  transition: background-color .2s var(--us-ease), border-color .2s var(--us-ease), color .2s var(--us-ease);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html.us-ready * { transition: none !important; }
-}
+// motion (transitions, mode switch, reduced motion) lives in unisense/_motion.scss

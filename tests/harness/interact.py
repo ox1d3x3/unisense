@@ -120,6 +120,11 @@ def main():
         check(pg.locator('.usn-tile.is-offline').count() == 2, 'lease-only devices are shown as offline')
         pg.wait_for_function("document.querySelectorAll('.usn-tile-rate .usn-rate').length > 0", timeout=15000)
         check(True, 'live per-device traffic appears')
+        heights = set()
+        for _ in range(3):
+            heights |= set(pg.evaluate("[...document.querySelectorAll('.usn-tile:not(.is-offline)')].map(t => Math.round(t.getBoundingClientRect().height))"))
+            pg.wait_for_timeout(4300)
+        check(len(heights) == 1, f'tiles keep one height while traffic comes and goes ({sorted(heights)})')
         check(pg.locator('#mainmenu a[href="/ui/unisense/networkmap"].active').count() == 1, 'menu entry is highlighted')
         pg.fill('[data-usn="query"]', 'pixel'); pg.wait_for_timeout(150)
         check(pg.locator('.usn-tile').count() == 1, 'search narrows the list')
@@ -161,6 +166,65 @@ def main():
         pg.click('.navbar-header .us-appearance-btn'); pg.wait_for_timeout(200)
         box = pg.locator('.us-appearance-menu').bounding_box()
         check(box is not None and box['x'] >= 0 and box['x'] + box['width'] <= 390, 'menu fits the phone screen')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
+        # --------------------------------------------- footer credit + rail
+        print('footer credit and collapsed rail')
+        version = (HERE.parents[1] / 'misc/theme-unisense/src/opnsense/www/themes/unisense/VERSION').read_text().strip()
+        ctx = b.new_context(viewport={'width': 1600, 'height': 900})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        pg.goto(f'{base}/dashboard.html'); pg.wait_for_timeout(1500)
+        credit = pg.locator('.page-foot .us-credit')
+        check(credit.count() == 1 and credit.inner_text().strip() == f'Author Ox1d3x3 × UniSense v{version}',
+              f'credit reads "Author Ox1d3x3 × UniSense v{version}"')
+        box = credit.bounding_box()
+        check(box is not None and 1500 < box['x'] + box['width'] <= 1600, 'credit sits at the bottom right, on screen')
+        foot = pg.locator('.page-foot').bounding_box()
+        check(foot is not None and foot['x'] + foot['width'] <= 1600, 'footer stays inside the viewport')
+        pg.click('.toggle-sidebar'); pg.wait_for_timeout(500)
+        check(pg.evaluate("document.documentElement.classList.contains('us-rail-collapsed')"), 'collapsed rail mirrored on <html>')
+        hw = pg.evaluate("document.querySelector('.page-head .navbar-header').getBoundingClientRect().width")
+        check(abs(hw - 70) < 1, f'top bar brand follows the collapsed rail ({hw}px)')
+        fx = pg.locator('.page-foot').bounding_box()['x']
+        check(abs(fx - 70) < 1, f'footer follows the collapsed rail ({fx}px)')
+        pg.click('.toggle-sidebar'); pg.wait_for_timeout(500)
+        check(not pg.evaluate("document.documentElement.classList.contains('us-rail-collapsed')"), 'expanding clears the mirror class')
+        check(not pg.evaluate("document.documentElement.classList.contains('us-loading')"), 'loading phase ends after load')
+        check(pg.evaluate("[...document.styleSheets].some(s => s.href && /unisense\\/build\\/css\\/main\\.css/.test(s.href) && [...s.cssRules].some(r => r.selectorText === ':root' && r.style.getPropertyValue('--us-accent')))"),
+              'design tokens (:root) load from main.css')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
+        # ------------------------------------------------------ sign-in page
+        print('sign-in page')
+        ctx = b.new_context(viewport={'width': 1280, 'height': 800})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        pg.goto(f'{base}/login.html'); pg.wait_for_timeout(800)
+        check(pg.is_visible('.us-login-brand .us-login-icon') and 'UniSense' in pg.inner_text('.us-login-title'), 'brand block shown')
+        check('Sign in to' in pg.inner_text('.us-login-sub'), 'shows the host being signed in to')
+        check(not pg.is_visible('.login-modal-head'), 'wordmark header replaced')
+        check(not pg.is_visible('#inputerrors'), 'empty error line hidden')
+        pg.fill('#passwordfld', 'hunter2')
+        pg.click('.us-pwd-toggle')
+        check(pg.get_attribute('#passwordfld', 'type') == 'text', 'show password')
+        pg.click('.us-pwd-toggle')
+        check(pg.get_attribute('#passwordfld', 'type') == 'password', 'hide password again')
+        pg.evaluate("document.getElementById('passwordfld').dispatchEvent(new KeyboardEvent('keydown', {key: 'A', modifierCapsLock: true}))")
+        check(pg.is_visible('.us-caps'), 'Caps Lock hint')
+        pg.evaluate("document.getElementById('passwordfld').dispatchEvent(new KeyboardEvent('keyup', {key: 'a'}))")
+        check(not pg.is_visible('.us-caps'), 'Caps Lock hint goes away')
+        pg.fill('#usernamefld', 'root')
+        sent = pg.evaluate("""() => new Promise(res => {
+            const f = document.getElementById('iform');
+            f.addEventListener('submit', e => { e.preventDefault();
+              const d = new FormData(f, e.submitter);
+              res({ login: d.get('login'), busy: e.submitter.classList.contains('us-busy'), disabled: e.submitter.disabled }); });
+            f.querySelector('button[type=submit]').click(); })""")
+        check(sent['login'] == '1' and sent['busy'] and not sent['disabled'],
+              f'submit shows busy and still posts login=1 ({sent})')
+        credit = pg.locator('.us-credit-fixed')
+        check(credit.count() == 1 and f'UniSense v{version}' in credit.inner_text(), 'credit in the corner')
         check(not errs, 'no console errors: ' + '; '.join(errs))
         ctx.close()
 

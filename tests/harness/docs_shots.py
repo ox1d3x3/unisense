@@ -65,6 +65,7 @@ def main():
         shot(b, 'legacy-dark', 'legacy', 'dark')
         shot(b, 'appearance', 'legacy', 'light', action=appearance, clip={'x': 560, 'y': 0, 'width': 880, 'height': 330})
         shot(b, 'login-dark', 'login', 'dark', size=(1200, 800))
+        shot(b, 'login-light', 'login', 'light', size=(1200, 800))
         shot(b, 'mobile-dashboard', 'dashboard', 'dark', size=(390, 844), wait=3500, mobile=True)
         shot(b, 'mobile-menu', 'cron', 'light', size=(390, 844), action=drawer, mobile=True)
         shot(b, 'mobile-networkmap', 'networkmap', 'dark', size=(390, 844), wait=4000, mobile=True)

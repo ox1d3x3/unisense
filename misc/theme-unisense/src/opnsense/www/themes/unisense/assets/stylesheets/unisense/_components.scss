@@ -11,7 +11,6 @@
   font-weight: 500;
   line-height: 20px;
   box-shadow: none;
-  transition: background-color .12s, border-color .12s, color .12s, box-shadow .12s;
 
   &:focus, &.focus, &:active:focus, &.active:focus { outline: 0; }
   &:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--us-accent-soft); }

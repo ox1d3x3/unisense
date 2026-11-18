@@ -49,7 +49,6 @@ $us-fly-item-h:  30px;      // fly-out menu item
   line-height: 20px;
   white-space: nowrap;
   text-decoration: none;
-  transition: background-color .12s, color .12s;
 
   &:hover,
   &:focus {
@@ -96,7 +95,6 @@ $us-fly-item-h:  30px;      // fly-out menu item
     color: var(--us-rail-text-2);
     font-size: 15px;
     text-align: center;
-    transition: color .12s;
   }
 
   &:hover > .__iconspacer { color: var(--us-rail-text-hi); }

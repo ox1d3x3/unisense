@@ -1,0 +1,82 @@
+// ===========================================================================
+// UniSense — motion
+//
+// Rules for smooth motion on big screens:
+//   * animate only transform and opacity (the GPU composites those); never
+//     width/height/top/left, which re-lay out the page on every frame,
+//   * hover feedback in navigation is instant, so highlights never trail the
+//     pointer; buttons and inputs get a short colour fade,
+//   * no backdrop blur, no fixed backgrounds (both repaint on every scroll),
+//   * a colour-mode switch restyles everything once, with transitions off,
+//   * prefers-reduced-motion turns all of it off.
+// ===========================================================================
+
+$us-fast: .1s;
+$us-med:  .18s;
+$us-out:  cubic-bezier(.2, 0, 0, 1);   // quick start, soft landing
+
+// Bootstrap collapse (expanded menu sections, panels): 350ms -> 180ms.
+// Height animation is what Bootstrap's JS drives, so keep it short.
+.collapsing {
+  transition-duration: $us-med;
+  transition-timing-function: $us-out;
+}
+
+// buttons and inputs: colour only, short
+.btn {
+  transition: background-color $us-fast linear, border-color $us-fast linear, color $us-fast linear;
+}
+.form-control {
+  transition: border-color $us-fast linear, box-shadow $us-fast linear;
+}
+
+// dialogs: slide + fade on the GPU, quicker than Bootstrap's 300ms
+.modal.fade .modal-dialog {
+  transition: transform .2s $us-out, opacity .2s $us-out;
+  opacity: 0;
+  transform: translate3d(0, 12px, 0) scale(.985);
+}
+.modal.in .modal-dialog {
+  opacity: 1;
+  transform: none;
+}
+.modal-backdrop.fade { transition: opacity .15s linear; }
+
+// dropdown menus: a short fade-in (opacity only)
+.open > .dropdown-menu,
+.us-appearance-menu:not([hidden]) {
+  animation: us-pop .12s $us-out;
+}
+@keyframes us-pop {
+  from { opacity: 0; transform: translate3d(0, -4px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+// dashboard grid (gridstack): widgets snap into place while the page loads,
+// and later only slide (left/top) when rearranged — their size never animates.
+// Specificity sits between gridstack's .grid-stack-animate .grid-stack-item
+// (0,2,0) and its dragging/resizing overrides (0,3,0), which stay instant.
+html .grid-stack-animate { transition: none; }
+html .grid-stack-animate .grid-stack-item {
+  transition: left .2s $us-out, top .2s $us-out;
+}
+html.us-loading .grid-stack-animate .grid-stack-item { transition: none; }
+
+// menu search field width
+.page-head .navbar-form .form-control { transition: none; }
+
+// colour-mode / accent switch: one restyle, no per-element transitions
+html.us-switching,
+html.us-switching *,
+html.us-switching *::before,
+html.us-switching *::after {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}

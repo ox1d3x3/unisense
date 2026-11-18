@@ -13,10 +13,8 @@ $us-lg: 1200px;
 // ------------------------------------------------------------------ top bar
 .page-head {
   height: var(--us-top-h);
-  background: var(--us-topbar);
+  background: var(--us-topbar);   // opaque: a backdrop blur repaints under the bar on every scroll frame
   box-shadow: inset 0 -1px 0 var(--us-line);
-  -webkit-backdrop-filter: saturate(180%) blur(12px);
-  backdrop-filter: saturate(180%) blur(12px);
 
   .navbar {
     min-height: var(--us-top-h);
@@ -212,8 +210,6 @@ $us-lg: 1200px;
   .page-head {
     background: var(--us-rail);
     box-shadow: inset 0 -1px 0 var(--us-rail-line);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
 
     .navbar-header {
       flex: 1 1 auto;
@@ -229,8 +225,9 @@ $us-lg: 1200px;
   .page-head .navbar-header {
     width: var(--us-rail-w);
   }
-  // collapsed rail (core opnsense_theme.js adds .col-sidebar-left)
-  body:has(#navigation.col-sidebar-left) .page-head .navbar-header {
+  // collapsed rail (core opnsense_theme.js adds .col-sidebar-left to #navigation;
+  // theme.js mirrors it as html.us-rail-collapsed — cheaper than body:has())
+  html.us-rail-collapsed .page-head .navbar-header {
     width: var(--us-rail-w-min);
     justify-content: center;
     padding: 0;

@@ -9,7 +9,12 @@
 // 3. every var(--us-*) used is defined;
 // 4. url() references point to files that exist (or core paths / data URIs);
 // 5. theme.js parses.
+//
+// The shipped CSS is compressed; checks 2-4 run on an expanded compile of the
+// same sources so the allow-list stays readable. The shipped files must parse
+// and must not contain a byte-order mark.
 import postcss from 'postcss';
+import * as sass from 'sass';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,15 +55,25 @@ const fail = (f, msg) => { errors++; console.error(`✗ ${f}: ${msg}`); };
 const defined = new Set(['--us-swatch']); // set inline by theme.js on accent swatches
 const used = new Map();
 
+const scssDir = join(theme, 'assets/stylesheets');
 for (const file of readdirSync(cssDir).filter(f => f.endsWith('.css'))) {
-  const css = readFileSync(join(cssDir, file), 'utf8');
-  let ast;
+  const shipped = readFileSync(join(cssDir, file), 'utf8');
+  if (shipped.includes('\uFEFF')) fail(file, 'contains a byte-order mark (would break the first rule)');
   try {
-    ast = postcss.parse(css, { from: file });
+    postcss.parse(shipped, { from: file });
   } catch (e) {
     fail(file, `parse error: ${e.message}`);
     continue;
   }
+  const scss = join(scssDir, file.replace(/\.css$/, '.scss'));
+  if (!existsSync(scss)) { fail(file, 'no matching source in assets/stylesheets'); continue; }
+  const css = sass.compile(scss, {
+    style: 'expanded',
+    loadPaths: [scssDir],
+    silenceDeprecations: ['import', 'global-builtin', 'slash-div', 'color-functions', 'if-function'],
+    logger: { warn: () => {} },
+  }).css;
+  const ast = postcss.parse(css, { from: file });
   ast.walkDecls(decl => {
     const rule = decl.parent;
     const sel = rule && rule.selector ? rule.selector : '';
