@@ -137,6 +137,17 @@
   --us-chart-1:       var(--us-accent);
   --us-chart-2:       color-mix(in srgb, var(--us-accent) 45%, var(--us-surface));
   --us-chart-track:   var(--us-line);
+  // series colours for multi-series widgets (core uses tableau Classic10)
+  --us-series-1:      var(--us-accent);
+  --us-series-2:      #ff8a3d;
+  --us-series-3:      #2fc26b;
+  --us-series-4:      #ff5468;
+  --us-series-5:      #8f6bff;
+  --us-series-6:      #c58c5c;
+  --us-series-7:      #f06bc0;
+  --us-series-8:      #8d96a1;
+  --us-series-9:      #c6cf3b;
+  --us-series-10:     #1fc3d6;
 
   --us-radius:        12px;
   --us-radius-sm:     8px;

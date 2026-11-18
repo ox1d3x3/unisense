@@ -132,7 +132,15 @@
      * onto theme tokens, in place and reversibly, so gauges follow the accent
      * colour and look right in dark mode. Any other colour is left untouched.
      */
-    var CHART_MAP = { '#D94F00': '--us-chart-1', '#A8C49B': '--us-chart-2', '#E5E5E5': '--us-chart-track' };
+    var CHART_MAP = {
+        '#D94F00': '--us-chart-1', '#A8C49B': '--us-chart-2', '#E5E5E5': '--us-chart-track',
+        /* tableau Classic10 (traffic, interface statistics, firewall) */
+        '#1F77B4': '--us-series-1', '#FF7F0E': '--us-series-2', '#2CA02C': '--us-series-3', '#D62728': '--us-series-4',
+        '#9467BD': '--us-series-5', '#8C564B': '--us-series-6', '#E377C2': '--us-series-7', '#7F7F7F': '--us-series-8',
+        '#BCBD22': '--us-series-9', '#17BECF': '--us-series-10',
+        /* Bootstrap status colours (thermal sensors) */
+        '#28A745': '--us-ok', '#FFC107': '--us-warn', '#DC3545': '--us-crit'
+    };
     var paletteCache = {};
     var probe = null;
 
@@ -238,6 +246,71 @@
         });
     }
 
+    /*
+     * A modern look for core's dashboard charts, applied to each chart's
+     * config before its first render: slim rounded gauges, ring charts with
+     * gaps and dot legends, thin smooth lines with a light fill, flat bars.
+     */
+    function styleChart(chart) {
+        var cfg = chart.config;
+        var o = cfg && cfg.options;
+        var type = cfg && cfg.type;
+        var sets = (cfg && cfg.data && cfg.data.datasets) || [];
+        if (!o) {
+            return;
+        }
+        if (type === 'doughnut' || type === 'pie') {
+            var gauge = o.circumference === 180;
+            o.cutout = gauge ? '80%' : '70%';
+            var arc = { borderWidth: gauge ? 0 : 2, borderRadius: gauge ? 6 : 5, hoverOffset: gauge ? 3 : 6, spacing: 0 };
+            o.elements = o.elements || {};
+            o.elements.arc = Object.assign(o.elements.arc || {}, arc);
+            sets.forEach(function (ds) {
+                Object.assign(ds, arc);
+            });
+            if (gauge) {
+                /* room for the rounded ends and the hover offset */
+                o.layout = Object.assign(o.layout || {}, { padding: { left: 8, right: 8, top: 6, bottom: 0 } });
+            }
+            o.plugins = o.plugins || {};
+            if (!gauge && o.plugins.legend) {
+                o.plugins.legend.labels = Object.assign(o.plugins.legend.labels || {}, {
+                    usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8, padding: 12
+                });
+            }
+        } else if (type === 'line') {
+            o.elements = o.elements || {};
+            o.elements.line = Object.assign(o.elements.line || {}, { borderWidth: 1.75, tension: 0.35 });
+            o.elements.point = Object.assign(o.elements.point || {}, { radius: 0, hoverRadius: 3, hitRadius: 8 });
+            var scales = o.scales || {};
+            Object.keys(scales).forEach(function (k) {
+                var sc = scales[k];
+                sc.border = Object.assign(sc.border || {}, { display: false });
+                sc.grid = Object.assign(sc.grid || {}, { drawTicks: false });
+                sc.ticks = Object.assign(sc.ticks || {}, { padding: 8 });
+            });
+        } else if (type === 'bar') {
+            sets.forEach(function (ds) {
+                ds.borderWidth = 0;
+            });
+        }
+    }
+
+    /* line charts: a light wash under the line instead of a 50% fill */
+    function softenFill(ds) {
+        var c = ds.backgroundColor;
+        if (typeof c !== 'string') {
+            return;
+        }
+        var m = c.match(/^rgba\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)\s*\)$/);
+        if (m && parseFloat(m[4]) > 0.2) {
+            ds.backgroundColor = 'rgba(' + m[1] + ', ' + m[2] + ', ' + m[3] + ', 0.16)';
+            if (ds.__unisense && ds.__unisense.scalar && ds.__unisense.scalar.backgroundColor) {
+                ds.__unisense.scalar.backgroundColor.out = ds.backgroundColor;
+            }
+        }
+    }
+
     function installChartPlugin() {
         var C = window.Chart;
         if (!C || typeof C.register !== 'function' || installChartPlugin.done) {
@@ -247,11 +320,20 @@
         try {
             C.register({
                 id: 'unisenseColors',
+                beforeInit: function (chart) {
+                    try {
+                        styleChart(chart);
+                    } catch (e) { /* cosmetic only */ }
+                },
                 beforeUpdate: function (chart) {
                     try {
                         var sets = (chart && chart.data && chart.data.datasets) || [];
+                        var line = chart.config && chart.config.type === 'line';
                         for (var i = 0; i < sets.length; i++) {
                             recolorDataset(sets[i]);
+                            if (line) {
+                                softenFill(sets[i]);
+                            }
                         }
                     } catch (e) { /* cosmetic only */ }
                 }
@@ -672,6 +754,49 @@
         }
     }
 
+    /*
+     * Core's layout closes every open sub-section whenever a section header
+     * is clicked (an accordion). With all sections kept open, a header click
+     * should only fold or unfold its own section, so it is handled here, in
+     * the capture phase, before core's and Bootstrap's handlers see it.
+     */
+    function guardMenuClicks() {
+        var menu = document.getElementById('mainmenu');
+        if (!menu || menu.__usGuard) {
+            return;
+        }
+        menu.__usGuard = true;
+        menu.addEventListener('click', function (e) {
+            if (!root.classList.contains('us-menu-expanded')) {
+                return;
+            }
+            var a = e.target.closest && e.target.closest('a[data-toggle="collapse"]');
+            if (!a || !menu.contains(a)) {
+                return;
+            }
+            var target = document.querySelector(a.getAttribute('href') || '#none');
+            if (!target) {
+                return;
+            }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            var open = !target.classList.contains('in');
+            target.classList.toggle('in', open);
+            target.style.height = '';
+            target.setAttribute('aria-expanded', String(open));
+            a.classList.toggle('collapsed', !open);
+            a.setAttribute('aria-expanded', String(open));
+            if (open) {
+                target.classList.remove('us-sub-enter');
+                void target.offsetWidth;
+                target.classList.add('us-sub-enter');
+                setTimeout(function () {
+                    target.classList.remove('us-sub-enter');
+                }, 260);
+            }
+        }, true);
+    }
+
     function setMenuExpanded(on) {
         write(MENU_KEY, on ? 'expanded' : null);
         applyMenuExpanded();
@@ -825,6 +950,7 @@
         try {
             mirrorRail();
             smoothMenu();
+            guardMenuClicks();
             applyMenuExpanded();
             mountCredit();
             enhanceLogin();

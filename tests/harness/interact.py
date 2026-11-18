@@ -74,6 +74,35 @@ def main():
         check(not errs, 'no console errors: ' + '; '.join(errs))
         ctx.close()
 
+        # ------------------------------------------------- keep menus open
+        print('keep all menu sections open')
+        ctx = b.new_context(viewport={'width': 1440, 'height': 900})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        pg.goto(f'{base}/cron.html'); pg.wait_for_timeout(1200)
+        opened = "document.querySelectorAll('#mainmenu .collapse.in').length"
+        total = pg.evaluate("document.querySelectorAll('#mainmenu .collapse').length")
+        before = pg.evaluate(opened)
+        pg.click('.us-appearance-btn')
+        sw = pg.locator('[data-us-menu="expanded"]')
+        check(sw.get_attribute('aria-checked') == 'false', 'the option is off by default')
+        sw.click(); pg.wait_for_timeout(300)
+        check(sw.get_attribute('aria-checked') == 'true', 'the switch turns on')
+        check(pg.evaluate(opened) == total and total > before, f'every section opens ({before} -> {pg.evaluate(opened)} of {total})')
+        pg.keyboard.press('Escape')
+        # a click on another section header must not close the others
+        hdr = pg.locator('#mainmenu a[href="#System"], #mainmenu a[data-target="#System"]').first
+        if hdr.count():
+            hdr.click(); pg.wait_for_timeout(400)
+        check(pg.evaluate(opened) >= total - 1, 'opening one section does not close the others')
+        pg.reload(); pg.wait_for_timeout(1200)
+        check(pg.evaluate(opened) == total, 'stays open after a reload')
+        check(pg.evaluate("localStorage.getItem('unisense.menu')") == 'expanded', 'preference stored')
+        pg.click('.us-appearance-btn'); pg.locator('[data-us-menu="expanded"]').click(); pg.wait_for_timeout(300)
+        check(pg.evaluate(opened) <= before + 1, f'turning it off goes back to the current section only ({pg.evaluate(opened)})')
+        check(pg.evaluate("localStorage.getItem('unisense.menu')") is None, 'preference cleared')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
         # ------------------------------------------- system preference (auto)
         print('auto mode follows the OS')
         ctx = b.new_context(viewport={'width': 1200, 'height': 800}, color_scheme='dark')

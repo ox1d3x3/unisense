@@ -36,7 +36,8 @@
 .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
     white-space: normal;
     text-overflow: clip;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    hyphens: auto;          /* "Descrip-tion", not "Descripti / on" */
     line-height: 1.3;
 }
 .tabulator .tabulator-header .tabulator-col.tabulator-sortable.tabulator-col-sorter-element:hover {

@@ -86,3 +86,43 @@ a:focus-visible > .fa.fa-toggle-on { outline: 2px solid var(--us-accent); outlin
 @media (prefers-reduced-motion: reduce) {
   .fa.fa-toggle-off, .fa.fa-toggle-on, .command-toggle { transition: none; &::before { transition: none; } }
 }
+
+// ---------------------------------------------------------------------------
+// On/off settings in MVC forms and edit dialogs (form_input_tr.volt draws a
+// bare checkbox per boolean field): shown as switches, like UniFi OS. Only
+// the stand-alone field checkbox of a form row — grid row selectors, lists
+// and legacy pages keep normal checkboxes. The knob is a background gradient
+// (no pseudo-elements on <input>), moved with background-position.
+// ---------------------------------------------------------------------------
+tr[id^="row_"] > td > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: $us-sw-w;
+  height: $us-sw-h;
+  margin: 0;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle closest-side, var(--us-on-accent) 0 calc(100% - 1px), transparent 100%)
+      2px 50% / #{$us-sw-k} #{$us-sw-k} no-repeat,
+    var(--us-line-strong);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color .15s linear, background-position .18s cubic-bezier(.2, 0, 0, 1);
+
+  &:checked {
+    background-color: var(--us-accent);
+    background-position: ($us-sw-w - $us-sw-k - 2px) 50%, 0 0;
+  }
+  &:focus-visible { outline: 2px solid var(--us-accent); outline-offset: 2px; }
+  &:disabled { opacity: .45; cursor: not-allowed; }
+}
+@media (prefers-reduced-motion: reduce) {
+  tr[id^="row_"] > td > input[type="checkbox"] { transition: none; }
+}
+
+// core marks both "Clear All" and "Select All" red: plain quiet links instead
+a[id^="clear-options_"],
+a[id^="select-options_"] {
+  color: var(--us-text-2);
+  &:hover, &:focus { color: var(--us-accent); text-decoration: none; }
+}

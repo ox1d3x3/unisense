@@ -160,7 +160,7 @@ td {
     /* core's gauge text is sized in em (height / 60 em): em resolves against
        the canvas' own font size, so pin it — the theme's larger body text
        made the two centre lines overlap */
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .cpu-canvas-container {
