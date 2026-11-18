@@ -1,0 +1,7 @@
+<menu>
+    <Lobby>
+        <NetworkMap VisibleName="Network Map" order="1" url="/ui/unisense/networkmap" cssClass="fa fa-sitemap fa-fw">
+            <item url="/ui/unisense/networkmap/*" visibility="hidden"/>
+        </NetworkMap>
+    </Lobby>
+</menu>

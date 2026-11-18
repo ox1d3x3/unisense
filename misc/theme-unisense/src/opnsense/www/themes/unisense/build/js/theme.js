@@ -265,12 +265,14 @@
         S.prototype.addTimeSeries = function (ts, opts) {
             try {
                 if (opts && typeof opts === 'object') {
-                    if (opts.strokeStyle) {
-                        opts.strokeStyle = mapColor(opts.strokeStyle.toUpperCase ? opts.strokeStyle.toUpperCase() : opts.strokeStyle);
-                    }
-                    if (opts.fillStyle) {
-                        opts.fillStyle = mapColor(opts.fillStyle.toUpperCase ? opts.fillStyle.toUpperCase() : opts.fillStyle);
-                    }
+                    ['strokeStyle', 'fillStyle'].forEach(function (k) {
+                        if (typeof opts[k] === 'string') {
+                            var mapped = mapColor(opts[k]);
+                            if (mapped !== opts[k]) {
+                                opts[k] = mapped;
+                            }
+                        }
+                    });
                 }
             } catch (e) { /* ignore */ }
             return orig.apply(this, arguments);
@@ -525,15 +527,15 @@
             navRight.insertBefore(menuItem, navRight.firstChild);
             placeMenu();
             try {
-                var mq = window.matchMedia('(max-width: 767px)');
+                var narrowMq = window.matchMedia('(max-width: 767px)');
                 var onChange = function () {
                     closeMenu();
                     placeMenu();
                 };
-                if (mq.addEventListener) {
-                    mq.addEventListener('change', onChange);
-                } else if (mq.addListener) {
-                    mq.addListener(onChange);
+                if (narrowMq.addEventListener) {
+                    narrowMq.addEventListener('change', onChange);
+                } else if (narrowMq.addListener) {
+                    narrowMq.addListener(onChange);
                 }
             } catch (e) { /* ignore */ }
         } else if (document.body && document.body.classList.contains('page-login')) {

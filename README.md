@@ -6,14 +6,14 @@
 
 **A clean, controller-style theme for the OPNsense web GUI.**
 
-Dark navigation rail · card layout · quiet tables · light, dark and auto modes · six accent colours · zero external requests.
+Dark navigation rail · card layout · quiet tables · light, dark and auto modes · six accent colours · **Network Map** · zero external requests.
 
 [![CI](https://github.com/ox1d3x3/unisense/actions/workflows/ci.yml/badge.svg)](https://github.com/ox1d3x3/unisense/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ox1d3x3/unisense?color=006fff)](https://github.com/ox1d3x3/unisense/releases/latest)
 [![License](https://img.shields.io/github/license/ox1d3x3/unisense?color=blue)](./LICENSE)
 ![OPNsense](https://img.shields.io/badge/OPNsense-25.7%20%7C%2026.1%20%7C%2026.7-d94f00)
 
-[Screenshots](#screenshots) · [Install](#installation) · [Use](#using-the-theme) · [FAQ](#faq) · [Build](#building-from-source) · [Releases](https://github.com/ox1d3x3/unisense/releases/latest)
+[Screenshots](#screenshots) · [Install](#installation) · [Network Map](#network-map) · [Use](#using-the-theme) · [FAQ](#faq) · [Build](#building-from-source) · [Releases](https://github.com/ox1d3x3/unisense/releases/latest)
 
 <br>
 
@@ -23,13 +23,13 @@ Dark navigation rail · card layout · quiet tables · light, dark and auto mode
 
 ### Quick install
 
-Run on the firewall as root (**Shell**, option 8 on the console menu or over SSH):
+On the firewall, as root (console **option 8 – Shell**, or SSH), paste one line:
 
 ```sh
-fetch -o /tmp/unisense-install.sh https://github.com/ox1d3x3/unisense/releases/latest/download/install.sh && sh /tmp/unisense-install.sh
+fetch -o - https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh | sh
 ```
 
-Then select **System → Settings → General → Theme → `unisense`** and press **Save**.
+That's it: the theme and the Network Map page are installed and the GUI switches to UniSense. Reload the browser tab (Ctrl+F5). Run the same line again any time to update.
 
 ---
 
@@ -43,6 +43,14 @@ Then select **System → Settings → General → Theme → `unisense`** and pre
   <tr>
     <td align="center"><sub><b>Light mode</b></sub></td>
     <td align="center"><sub><b>Collapsed icon rail with fly-out menus</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/networkmap-dark.png" alt="Network Map"></td>
+    <td width="50%"><img src="docs/screenshots/networkmap-device.png" alt="Renaming a device on the Network Map"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Network Map with live traffic</b></sub></td>
+    <td align="center"><sub><b>Name any device and pick its icon</b></sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/grid-light.png" alt="A data grid page"></td>
@@ -85,6 +93,13 @@ Then select **System → Settings → General → Theme → `unisense`** and pre
 - Six accent colours: Blue, Teal, Green, Purple, Pink, Orange
 - Your choice is remembered per browser; with JavaScript off the theme still follows the OS
 
+**Network Map** (Lobby → Network Map)
+- Internet → firewall → networks → devices, at a glance; gateway health and WAN addresses on top
+- Every device that is online (ARP) or has a DHCP lease (Kea, Dnsmasq or ISC), grouped by network, with vendor and hostname
+- Live per-device download/upload rates, network totals, search, per-network filters, hide offline devices
+- Click a device to give it a name and an icon — stored in the OPNsense configuration, so every browser and admin sees it (and it is included in backups)
+- Icons are guessed automatically (phones, laptops, TVs, consoles, cameras, NAS, access points, smart-home…)
+
 **Coverage**
 - Every MVC page: forms, tabs, data grids (Tabulator), edit dialogs, dropdowns, tooltips, popovers, the status dialog
 - Dashboard widgets as cards; gauges and the CPU graph follow the accent colour and recolour when you switch modes
@@ -101,31 +116,49 @@ Then select **System → Settings → General → Theme → `unisense`** and pre
 
 ## Installation
 
-### Installer (recommended)
+### One line (recommended)
 
 ```sh
-fetch -o /tmp/unisense-install.sh https://github.com/ox1d3x3/unisense/releases/latest/download/install.sh
-sh /tmp/unisense-install.sh
+fetch -o - https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh | sh
 ```
 
-The installer downloads the latest release, checks it is complete, and copies it to `/usr/local/opnsense/www/themes/unisense` in one step (a failed download never leaves half a theme behind). Running it again updates the theme.
+The installer downloads the latest release (or the `main` branch until the first release is published), checks it is complete, installs the theme in one step so a failed download never leaves half a theme behind, adds the Network Map page, refreshes the GUI's menu and caches, and selects the UniSense theme. Running it again updates everything.
+
+### Menu
+
+Download the installer and run it in a terminal to get a menu (install, install without switching theme, status, uninstall):
+
+```sh
+fetch -o /tmp/unisense.sh https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh
+sh /tmp/unisense.sh
+```
+
+### Options
 
 | Command | What it does |
 | --- | --- |
-| `sh install.sh` | install or update to the latest release |
+| `sh install.sh` | menu in a terminal; otherwise install/update and select the theme |
+| `sh install.sh install --no-activate` | install/update but keep the current theme |
+| `sh install.sh --status` | installed version, active theme, Network Map |
+| `sh install.sh --uninstall` | switch back to the default theme and remove everything |
 | `sh install.sh --version 1.0.0` | install a specific release |
-| `sh install.sh --local DIR` | install from an extracted release or a clone of this repository |
-| `sh install.sh --status` | show the installed version and whether it is active |
-| `sh install.sh --uninstall` | remove the theme (switch to another theme first) |
+| `sh install.sh --branch main` | install the current state of a branch |
+| `sh install.sh --local DIR` | install from an extracted archive or a clone of this repository |
+| `sh install.sh --url URL` | install from a `.tar.gz` at any URL (for example a CI artifact) |
+
+Options can be passed through the one-liner too: `fetch -o - …/install.sh | sh -s -- --no-activate`.
+
+**Private repository or fork?** `fetch` cannot sign in to GitHub. Use a token with read access; the installer then downloads with `curl` and the token:
+
+```sh
+export GITHUB_TOKEN=github_pat_xxx
+curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh | sh
+```
 
 ### Manual install
 
 1. Download `unisense.tar.gz` from the [latest release](https://github.com/ox1d3x3/unisense/releases/latest) and copy it to the firewall.
-2. Extract it and run the bundled installer:
-   ```sh
-   tar -xzf unisense.tar.gz && sh install.sh
-   ```
-   or copy the `unisense` directory to `/usr/local/opnsense/www/themes/` yourself and run `touch /usr/local/opnsense/www/index.php` so browsers fetch the new files.
+2. `tar -xzf unisense.tar.gz && sh unisense/install.sh`
 
 ### As an OPNsense plugin package
 
@@ -133,16 +166,34 @@ The installer downloads the latest release, checks it is complete, and copies it
 
 ---
 
+## Network Map
+
+**Lobby → Network Map** shows your network the way a controller does:
+
+- **Top:** the internet, your gateways with their status and latency, and the firewall with its WAN addresses.
+- **Below:** one card per network (LAN, VLANs, …) with its subnet, how many devices are online, and live traffic. Each device shows its name, IP, vendor and live download/upload.
+- **Click a device** for details (IP, MAC, vendor, hostname, network, traffic) and to set a **name** and **icon**. *Reset* returns to the detected name and the automatic icon.
+
+Everything comes from OPNsense itself — interfaces, gateways, the ARP table, DHCP leases and the built-in traffic monitor; nothing is installed or running in the background. Live traffic samples the LAN interfaces every few seconds while the page is open (the same tool as *Reporting → Traffic*); untick **Live traffic** to turn it off. Device names live in the configuration under *UniSense*, are part of configuration backups, and can be used by any administrator.
+
+Access is a normal privilege, **Lobby: Network Map**, so you can grant it to other users in *System → Access → Groups*. Those users also need the privileges for the data sources they should see (for example *Diagnostics: ARP Table* and *Interfaces: Overview*).
+
+---
+
 ## Using the theme
 
-1. **System → Settings → General → Theme** → choose **unisense** → **Save**.
+1. The installer selects the theme for you. To switch by hand: **System → Settings → General → Theme** → **unisense** → **Save**.
 2. Pick light, dark or system mode and an accent colour from the **sun/moon button** in the top bar (on phones it sits next to the menu button).
 
 Each browser keeps its own choice. To reset it, choose **System** and **Blue**, or run `localStorage.clear()` in the browser console on the firewall's GUI.
 
 ### Uninstalling
 
-Select another theme first (for example **opnsense**) and save, then run `sh install.sh --uninstall`.
+```sh
+fetch -o - https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh | sh -s -- --uninstall
+```
+
+The GUI is switched back to the default **opnsense** theme first, then every UniSense file is removed. Device names stay in the configuration, so a reinstall picks them up again.
 
 ---
 
@@ -151,7 +202,7 @@ Select another theme first (for example **opnsense**) and save, then run `sh ins
 <details>
 <summary><b>Does it survive OPNsense updates?</b></summary>
 
-Yes. The theme lives in its own directory, which firmware updates do not touch. If a future OPNsense release changes its page layout, update UniSense with `sh install.sh`.
+Yes. UniSense's files live in their own directories, which firmware updates do not touch. If a future OPNsense release changes its page layout, update UniSense by running the one-liner again.
 </details>
 
 <details>
@@ -179,6 +230,12 @@ Dashboard gauges and the CPU graph follow your accent colour. Multi-series chart
 </details>
 
 <details>
+<summary><b>The Network Map shows a device in the wrong place or without a name.</b></summary>
+
+Devices are grouped by the interface they were seen on (ARP) or, for DHCP-only devices, by their lease. Names come from DHCP leases; devices with a static IP and no lease show their vendor or IP — click them to give them a name. Devices that are only reachable through another router (e.g. behind a mesh in router mode) cannot be seen by the firewall and are not listed.
+</details>
+
+<details>
 <summary><b>Can I change the logo or colours?</b></summary>
 
 Logos are in `build/images/` (`default-logo.svg`, `icon-logo.svg`, `favicon.png`). Colours are design tokens in `assets/stylesheets/config/_tokens.scss` — change them and run `npm run build`.
@@ -193,8 +250,9 @@ Requirements: Node.js 18 or newer.
 ```sh
 npm ci
 npm run build      # compile assets/stylesheets -> build/css
-npm run lint       # parse check, colour-token check, url() check, theme.js syntax
-npm test           # both
+npm run lint       # stylesheet checks (parse, colour tokens, url()) + ESLint on the browser scripts
+npm test           # build check + lint + installer tests (tests/test-install.sh)
+sh scripts/check-plugin.sh   # PHP syntax, XML, model masks, Volt helpers
 sh scripts/package.sh   # dist/unisense.tar.gz + install.sh + SHA256SUMS
 ```
 
@@ -221,7 +279,7 @@ git clone --depth 1 -b stable/26.7 https://github.com/opnsense/core /tmp/core
 cd tests/harness
 python3 render.py   --core /tmp/core      # build the pages
 python3 shoot.py    --core /tmp/core      # screenshots, light/dark, desktop/phone; fails on JS errors or missing files
-python3 interact.py --core /tmp/core      # appearance menu, accents, charts, selects, dialogs, drawer, tablet widths
+python3 interact.py --core /tmp/core      # appearance menu, accents, charts, selects, dialogs, drawer, tablet widths, Network Map
 ```
 
 CI runs all of this against OPNsense 25.7, 26.1 and 26.7 on every push and uploads the screenshots as an artifact.

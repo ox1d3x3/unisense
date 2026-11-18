@@ -69,9 +69,11 @@ class Item:
         return ' '.join(css) + ' '
 
 
-def build_menu(core_models: Path, selected_url: str):
+def build_menu(core_models: Path, selected_url: str, extra_models=()):
     root = Item('root', 0)
     files = sorted(core_models.glob('OPNsense/*/Menu/Menu.xml'))
+    for extra in extra_models:
+        files += sorted(Path(extra).glob('OPNsense/*/Menu/Menu.xml'))
     # Core first, like the real menu system
     files.sort(key=lambda p: 0 if p.parts[-3] == 'Core' else 1)
     for f in files:

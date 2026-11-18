@@ -1,0 +1,974 @@
+/*
+ * UniSense for OPNsense — Lobby: Network Map
+ * (c) ox1d3x3 — BSD 2-Clause License
+ *
+ * Builds a live topology (internet -> firewall -> networks -> devices) from
+ * core APIs only:
+ *   /api/interfaces/overview/interfaces_info   interfaces, addresses, gateways
+ *   /api/routes/gateway/status                 gateway health
+ *   /api/diagnostics/interface/get_arp         who is online (IPv4)
+ *   /api/kea/leases4/search                    hostnames (Kea, optional)
+ *   /api/dnsmasq/leases/search                 hostnames (Dnsmasq, optional)
+ *   /api/dhcpv4/leases/search_lease            hostnames (ISC DHCP, optional)
+ *   /api/diagnostics/traffic/top/<ifs>         live per-host traffic (optional)
+ *   /api/unisense/networkmap/*                 custom device names and icons
+ *
+ * Optional sources are read with fetch() so a missing service or plugin never
+ * triggers the GUI's global ajax error dialog. Every value from the network
+ * (hostnames, labels, vendors) is HTML-escaped before it is rendered.
+ */
+(function () {
+    'use strict';
+
+    var root = document.getElementById('usn');
+    if (!root) {
+        return;
+    }
+
+    /* ------------------------------------------------------------ strings */
+    var T = {};
+    Object.keys(root.dataset).forEach(function (k) {
+        if (k.indexOf('t') === 0 && k.length > 1) {
+            var key = k.charAt(1).toLowerCase() + k.slice(2);
+            T[key] = root.dataset[k];
+        }
+    });
+    function t(key, fallback) {
+        return T[key] || fallback;
+    }
+
+    /* -------------------------------------------------------------- icons */
+    var ICONS = {
+        laptop: 'fa-laptop',
+        desktop: 'fa-desktop',
+        mobile: 'fa-mobile-screen-button',
+        tablet: 'fa-tablet-screen-button',
+        tv: 'fa-tv',
+        game: 'fa-gamepad',
+        server: 'fa-server',
+        nas: 'fa-hard-drive',
+        printer: 'fa-print',
+        camera: 'fa-video',
+        ap: 'fa-wifi',
+        switch: 'fa-network-wired',
+        router: 'fa-route',
+        iot: 'fa-lightbulb',
+        speaker: 'fa-volume-high',
+        watch: 'fa-clock',
+        car: 'fa-car',
+        other: 'fa-circle-question'
+    };
+    var ICON_LABELS = {
+        laptop: 'Laptop', desktop: 'Desktop', mobile: 'Phone', tablet: 'Tablet', tv: 'TV / media',
+        game: 'Console', server: 'Server', nas: 'NAS', printer: 'Printer', camera: 'Camera',
+        ap: 'Access point', switch: 'Switch', router: 'Router', iot: 'Smart home', speaker: 'Speaker',
+        watch: 'Wearable', car: 'Car', other: 'Other'
+    };
+
+    /* first match wins; tested against "hostname vendor" (lower case) */
+    var GUESS = [
+        [/iphone|android|pixel|galaxy|oneplus|redmi|xiaomi.*(phone|mi)|huawei-p|oppo|vivo|motorola|moto[- ]/, 'mobile'],
+        [/ipad|tab[- ]?s\d|kindle|fire[- ]?tab|surface go/, 'tablet'],
+        [/watch|fitbit|garmin/, 'watch'],
+        [/macbook|laptop|thinkpad|notebook|xps|zenbook|surface/, 'laptop'],
+        [/imac|mac[- ]?mini|mac[- ]?studio|desktop|-pc\b|\bpc\b|workstation/, 'desktop'],
+        [/xbox|playstation|ps[45]\b|nintendo|switch-?oled|steamdeck|steam-deck|sony interactive/, 'game'],
+        [/apple[- ]?tv|appletv|roku|chromecast|shield|firetv|fire[- ]?tv|bravia|webos|lg[- ]?tv|samsung[- ]?tv|tizen|\btv\b|hisense|tcl/, 'tv'],
+        [/sonos|homepod|echo|alexa|nest[- ]?(mini|audio|hub)|bose|speaker/, 'speaker'],
+        [/printer|laserjet|officejet|deskjet|epson|brother|canon|lexmark|kyocera|xerox|ricoh/, 'printer'],
+        [/synology|qnap|\bnas\b|truenas|unraid|asustor|terramaster|zimaos|casaos/, 'nas'],
+        [/cam\b|camera|hikvision|dahua|reolink|amcrest|axis comm|wyze|eufy|arlo|doorbell|nvr|frigate/, 'camera'],
+        [/\bap\b|access[- ]?point|unifi|ubiquiti|aruba|ruckus|eap\d|deco|omada|mikrotik/, 'ap'],
+        [/switch|netgear|tp-?link|d-?link|zyxel|cisco/, 'switch'],
+        [/router|openwrt|gl-?inet|fritz|asus-?rt/, 'router'],
+        [/espressif|tuya|shelly|sonoff|tasmota|hue|philips lighting|lifx|wiz|nest|ring|ecobee|smart|esp32|esp8266|home[- ]?assistant|zigbee|tado/, 'iot'],
+        [/proxmox|esxi|vmware|server|srv|docker|kube|raspberry|pi-?hole|nuc/, 'server'],
+        [/tesla|car\b/, 'car'],
+        [/apple/, 'laptop']
+    ];
+
+    function guessIcon(dev) {
+        var hay = ((dev.hostname || '') + ' ' + (dev.vendor || '')).toLowerCase();
+        for (var i = 0; i < GUESS.length; i++) {
+            if (GUESS[i][0].test(hay)) {
+                return GUESS[i][1];
+            }
+        }
+        return 'other';
+    }
+
+    /* ------------------------------------------------------------ helpers */
+    function esc(v) {
+        return String(v === undefined || v === null ? '' : v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function normMac(m) {
+        m = String(m || '').trim().toLowerCase().replace(/-/g, ':');
+        return /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(m) ? m : '';
+    }
+
+    function ipSortKey(ip) {
+        var p = String(ip || '').split('.');
+        if (p.length !== 4) {
+            return Number.MAX_SAFE_INTEGER;
+        }
+        return ((+p[0] * 256 + +p[1]) * 256 + +p[2]) * 256 + +p[3];
+    }
+
+    function fmtBits(bits) {
+        bits = +bits || 0;
+        var units = ['b/s', 'Kb/s', 'Mb/s', 'Gb/s'];
+        var i = 0;
+        while (bits >= 1000 && i < units.length - 1) {
+            bits /= 1000;
+            i++;
+        }
+        return (i === 0 ? Math.round(bits) : bits.toFixed(bits >= 100 ? 0 : 1)) + ' ' + units[i];
+    }
+
+    /* compact form for tiles: 42.5M, 820K */
+    function fmtBitsShort(bits) {
+        bits = +bits || 0;
+        var units = ['', 'K', 'M', 'G'];
+        var i = 0;
+        while (bits >= 1000 && i < units.length - 1) {
+            bits /= 1000;
+            i++;
+        }
+        return (i === 0 ? Math.round(bits) : bits.toFixed(bits >= 100 ? 0 : 1)) + units[i];
+    }
+
+    function rows(data) {
+        if (!data) {
+            return [];
+        }
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (Array.isArray(data.rows)) {
+            return data.rows;
+        }
+        if (Array.isArray(data.items)) {
+            return data.items;
+        }
+        return [];
+    }
+
+    function fetchJson(url, timeoutMs) {
+        var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs || 20000) : null;
+        return fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' },
+            signal: ctrl ? ctrl.signal : undefined
+        }).then(function (r) {
+            if (!r.ok) {
+                return null;
+            }
+            return r.json().catch(function () { return null; });
+        }).catch(function () {
+            return null;
+        }).then(function (v) {
+            if (timer) {
+                clearTimeout(timer);
+            }
+            return v;
+        });
+    }
+
+    function postJson(url, payload) {
+        return new Promise(function (resolve) {
+            $.ajax({
+                url: url,
+                type: 'POST',
+                dataType: 'json',
+                contentType: 'application/json; charset=utf-8',
+                data: JSON.stringify(payload || {}),
+                global: false,
+                success: function (data) { resolve(data || {}); },
+                error: function (xhr) { resolve((xhr && xhr.responseJSON) || { result: 'failed' }); }
+            });
+        });
+    }
+
+    /* -------------------------------------------------------------- state */
+    var S = {
+        interfaces: [],     // assigned, enabled interfaces
+        gateways: [],
+        devices: {},        // mac -> device
+        labels: {},         // mac -> {uuid, name, icon}
+        system: null,
+        rates: {},          // ip -> {in, out}
+        filter: 'all',
+        query: '',
+        showOffline: true,
+        live: true,
+        loaded: false,
+        failed: false,
+        updated: null
+    };
+
+    try {
+        var pref = JSON.parse(window.localStorage.getItem('unisense.netmap') || '{}');
+        if (typeof pref.showOffline === 'boolean') {
+            S.showOffline = pref.showOffline;
+        }
+        if (typeof pref.live === 'boolean') {
+            S.live = pref.live;
+        }
+    } catch (e) { /* storage unavailable */ }
+
+    function savePrefs() {
+        try {
+            window.localStorage.setItem('unisense.netmap', JSON.stringify({ showOffline: S.showOffline, live: S.live }));
+        } catch (e) { /* ignore */ }
+    }
+
+    function isUplink(ifc) {
+        var lt = String(ifc.link_type || '').toLowerCase();
+        return (Array.isArray(ifc.gateways) && ifc.gateways.length > 0) ||
+            ['dhcp', 'pppoe', 'pptp', 'l2tp', 'ppp'].indexOf(lt) !== -1 ||
+            ifc.identifier === 'wan';
+    }
+
+    /* optional DHCP services: only ask the ones present in this GUI's menu */
+    function hasMenu(path) {
+        return !!document.querySelector('#mainmenu a[href^="' + path + '"]');
+    }
+
+    /* --------------------------------------------------------------- load */
+    function load() {
+        return Promise.all([
+            fetchJson('/api/interfaces/overview/interfaces_info'),
+            fetchJson('/api/routes/gateway/status'),
+            fetchJson('/api/diagnostics/interface/get_arp', 30000),
+            hasMenu('/ui/kea/') ? fetchJson('/api/kea/leases4/search') : Promise.resolve(null),
+            hasMenu('/ui/dnsmasq/') ? fetchJson('/api/dnsmasq/leases/search') : Promise.resolve(null),
+            hasMenu('/ui/dhcpv4/leases') ? fetchJson('/api/dhcpv4/leases/search_lease') : Promise.resolve(null),
+            fetchJson('/api/unisense/networkmap/search_device'),
+            S.system ? Promise.resolve(S.system) : fetchJson('/api/diagnostics/system/system_information')
+        ]).then(function (res) {
+            var ifRows = rows(res[0]);
+            if (!res[0] || (!ifRows.length && !rows(res[2]).length)) {
+                S.failed = !S.loaded;
+            } else {
+                S.failed = false;
+            }
+
+            /* interfaces */
+            var ifaces = [];
+            var byDevice = {};
+            ifRows.forEach(function (r) {
+                if (!r || !r.identifier || r.enabled === false) {
+                    return;
+                }
+                var ifc = {
+                    id: String(r.identifier),
+                    name: String(r.description || r.identifier).trim(),
+                    device: String(r.device || r.ifname || ''),
+                    status: String(r.status || ''),
+                    addr4: String(r.addr4 || ''),
+                    addr6: String(r.addr6 || ''),
+                    mac: normMac(r.macaddr),
+                    link_type: r.link_type,
+                    gateways: Array.isArray(r.gateways) ? r.gateways : [],
+                    identifier: String(r.identifier),
+                    vlan: r.vlan_tag || null
+                };
+                ifc.uplink = isUplink(ifc);
+                ifaces.push(ifc);
+                if (ifc.device) {
+                    byDevice[ifc.device] = ifc;
+                }
+            });
+            S.interfaces = ifaces;
+            S.gateways = rows(res[1]).filter(function (g) { return g && g.name; });
+
+            var ownMacs = {};
+            ifaces.forEach(function (i) {
+                if (i.mac) {
+                    ownMacs[i.mac] = true;
+                }
+            });
+
+            /* devices: ARP = online */
+            var devices = {};
+            function devFor(mac) {
+                if (!devices[mac]) {
+                    devices[mac] = {
+                        mac: mac, ips: [], hostname: '', vendor: '', ifname: '', ifid: '',
+                        online: false, lease: false
+                    };
+                }
+                return devices[mac];
+            }
+            function addIp(d, ip) {
+                if (ip && d.ips.indexOf(ip) === -1) {
+                    d.ips.push(ip);
+                }
+            }
+
+            rows(res[2]).forEach(function (a) {
+                var mac = normMac(a && a.mac);
+                if (!mac || ownMacs[mac] || a.permanent === true || a.expired === true) {
+                    return;
+                }
+                var d = devFor(mac);
+                d.online = true;
+                addIp(d, a.ip);
+                d.hostname = d.hostname || String(a.hostname || '');
+                d.vendor = d.vendor || String(a.manufacturer || '');
+                if (a.intf && byDevice[a.intf]) {
+                    d.ifid = byDevice[a.intf].id;
+                }
+                d.ifname = d.ifname || String(a.intf_description || a.intf || '');
+            });
+
+            /* leases: names, and devices that are currently offline */
+            function applyLease(l, macKey, ipKey, hostKey, ifKey, ifDescrKey, vendorKey) {
+                var mac = normMac(l && l[macKey]);
+                if (!mac || ownMacs[mac]) {
+                    return;
+                }
+                var known = !!devices[mac];
+                var d = devFor(mac);
+                d.lease = true;
+                if (!known) {
+                    addIp(d, l[ipKey]);
+                }
+                if (l[hostKey] && !d.hostname) {
+                    d.hostname = String(l[hostKey]).replace(/\.$/, '');
+                }
+                if (vendorKey && l[vendorKey] && !d.vendor) {
+                    d.vendor = String(l[vendorKey]);
+                }
+                if (!d.ifid) {
+                    var dev = l[ifKey] && byDevice[l[ifKey]];
+                    if (dev) {
+                        d.ifid = dev.id;
+                    } else if (l[ifDescrKey]) {
+                        var hit = ifaces.filter(function (i) { return i.name === l[ifDescrKey]; })[0];
+                        if (hit) {
+                            d.ifid = hit.id;
+                        }
+                    }
+                }
+                d.ifname = d.ifname || String(l[ifDescrKey] || '');
+            }
+            rows(res[3]).forEach(function (l) { applyLease(l, 'hwaddr', 'address', 'hostname', 'if', 'if_descr', 'mac_info'); });
+            rows(res[4]).forEach(function (l) { applyLease(l, 'hwaddr', 'address', 'hostname', 'if', 'if_descr', 'mac_info'); });
+            rows(res[5]).forEach(function (l) { applyLease(l, 'mac', 'address', 'hostname', 'if', 'if_descr', 'man'); });
+
+            /* assign by subnet when ARP/lease did not tell us the interface */
+            Object.keys(devices).forEach(function (mac) {
+                var d = devices[mac];
+                if (!d.ifid && d.ips.length) {
+                    var hit = ifaces.filter(function (i) { return inSubnet(d.ips[0], i.addr4); })[0];
+                    if (hit) {
+                        d.ifid = hit.id;
+                    }
+                }
+                d.ips.sort(function (a, b) { return ipSortKey(a) - ipSortKey(b); });
+            });
+            S.devices = devices;
+
+            /* labels */
+            if (res[6]) {
+                var labels = {};
+                rows(res[6]).forEach(function (r) {
+                    var mac = normMac(r && r.mac);
+                    if (mac) {
+                        labels[mac] = { uuid: r.uuid, name: String(r.name || ''), icon: String(r.icon || '') };
+                    }
+                });
+                S.labels = labels;
+            }
+
+            if (res[7] && typeof res[7] === 'object') {
+                S.system = res[7];
+            }
+            S.loaded = true;
+            S.updated = new Date();
+        });
+    }
+
+    function inSubnet(ip, cidr) {
+        var m = /^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/.exec(String(cidr || ''));
+        if (!m || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+            return false;
+        }
+        var bits = +m[2];
+        if (bits <= 0) {
+            return true;
+        }
+        var mask = bits >= 32 ? 0xffffffff : (~((1 << (32 - bits)) - 1)) >>> 0;
+        return ((ipSortKey(ip) & mask) >>> 0) === ((ipSortKey(m[1]) & mask) >>> 0);
+    }
+
+    /* ------------------------------------------------------- live traffic */
+    var trafficTimer = null;
+    var trafficBusy = false;
+
+    function lanIds() {
+        return S.interfaces.filter(function (i) { return !i.uplink && i.status === 'up'; })
+            .map(function (i) { return i.id; });
+    }
+
+    function pollTraffic() {
+        clearTimeout(trafficTimer);
+        trafficTimer = null;
+        if (!S.live || trafficBusy) {
+            return;
+        }
+        var ids = lanIds();
+        if (!ids.length || document.hidden) {
+            trafficTimer = setTimeout(pollTraffic, 5000);
+            return;
+        }
+        trafficBusy = true;
+        fetchJson('/api/diagnostics/traffic/top/' + ids.map(encodeURIComponent).join(','), 30000).then(function (data) {
+            var rates = {};
+            if (data && typeof data === 'object') {
+                Object.keys(data).forEach(function (intf) {
+                    var recs = (data[intf] && data[intf].records) || [];
+                    recs.forEach(function (r) {
+                        if (r && r.address) {
+                            var cur = rates[r.address] || { in: 0, out: 0 };
+                            cur.in += +r.rate_bits_in || 0;
+                            cur.out += +r.rate_bits_out || 0;
+                            rates[r.address] = cur;
+                        }
+                    });
+                });
+            }
+            S.rates = rates;
+            updateRates();
+        }).then(function () {
+            trafficBusy = false;
+            if (S.live) {
+                trafficTimer = setTimeout(pollTraffic, 4000);
+            }
+        });
+    }
+
+    function deviceRate(d) {
+        var r = { in: 0, out: 0 };
+        d.ips.forEach(function (ip) {
+            var x = S.rates[ip];
+            if (x) {
+                r.in += x.in;
+                r.out += x.out;
+            }
+        });
+        return r;
+    }
+
+    function rateHtml(r, short) {
+        if (!r || (!r.in && !r.out)) {
+            return '';
+        }
+        var f = short ? fmtBitsShort : fmtBits;
+        return '<span class="usn-rate" title="' + esc(fmtBits(r.in) + ' / ' + fmtBits(r.out)) + '">' +
+            '<i class="fa fa-arrow-down"></i>' + esc(f(r.in)) +
+            ' <i class="fa fa-arrow-up"></i>' + esc(f(r.out)) + '</span>';
+    }
+
+    function updateRates() {
+        var total = { in: 0, out: 0 };
+        root.querySelectorAll('[data-mac]').forEach(function (el) {
+            var d = S.devices[el.getAttribute('data-mac')];
+            var slot = el.querySelector('.usn-tile-rate');
+            if (!d || !slot) {
+                return;
+            }
+            var r = deviceRate(d);
+            slot.innerHTML = S.live ? rateHtml(r, true) : '';
+        });
+        Object.keys(S.devices).forEach(function (mac) {
+            var r = deviceRate(S.devices[mac]);
+            total.in += r.in;
+            total.out += r.out;
+        });
+        var tot = root.querySelector('[data-usn-total]');
+        if (tot) {
+            tot.innerHTML = S.live ? (esc(fmtBits(total.in)) + ' <small>/</small> ' + esc(fmtBits(total.out))) : '&mdash;';
+        }
+        root.querySelectorAll('[data-usn-net-rate]').forEach(function (el) {
+            var id = el.getAttribute('data-usn-net-rate');
+            var r = { in: 0, out: 0 };
+            Object.keys(S.devices).forEach(function (mac) {
+                var d = S.devices[mac];
+                if (d.ifid === id) {
+                    var x = deviceRate(d);
+                    r.in += x.in;
+                    r.out += x.out;
+                }
+            });
+            el.innerHTML = S.live ? rateHtml(r) : '';
+        });
+    }
+
+    /* ------------------------------------------------------------- render */
+    function label(d) {
+        var l = S.labels[d.mac];
+        return (l && l.name) || d.hostname || d.vendor || d.ips[0] || d.mac;
+    }
+
+    function iconKey(d) {
+        var l = S.labels[d.mac];
+        if (l && l.icon && l.icon !== 'auto' && ICONS[l.icon]) {
+            return l.icon;
+        }
+        return guessIcon(d);
+    }
+
+    function matches(d) {
+        if (!S.showOffline && !d.online) {
+            return false;
+        }
+        if (S.filter !== 'all' && d.ifid !== S.filter) {
+            return false;
+        }
+        if (!S.query) {
+            return true;
+        }
+        var hay = [label(d), d.hostname, d.vendor, d.mac, d.ips.join(' '), d.ifname].join(' ').toLowerCase();
+        return S.query.split(/\s+/).every(function (w) { return hay.indexOf(w) !== -1; });
+    }
+
+    function gatewayChip(g) {
+        var st = String(g.status_translated || g.status || '').toLowerCase();
+        var raw = String(g.status || '').toLowerCase();
+        var cls = 'ok';
+        if (raw === 'down' || raw === 'force_down' || st.indexOf('offline') !== -1) {
+            cls = 'crit';
+        } else if (raw !== 'none' && raw !== 'online' && st !== 'online') {
+            cls = 'warn';
+        }
+        return '<span class="usn-chip usn-chip-' + cls + '">' + esc(g.status_translated || g.status || '') + '</span>';
+    }
+
+    function renderShell() {
+        root.innerHTML =
+            '<div class="usn-toolbar">' +
+            '  <div class="usn-search"><i class="fa fa-magnifying-glass" aria-hidden="true"></i>' +
+            '    <input type="search" class="form-control" data-usn="query" placeholder="' + esc(t('search', 'Search')) + '" aria-label="' + esc(t('search', 'Search')) + '"></div>' +
+            '  <div class="usn-filters" data-usn="filters" role="tablist"></div>' +
+            '  <div class="usn-tools">' +
+            '    <label class="usn-switch"><input type="checkbox" data-usn="offline"> <span>' + esc(t('showOffline', 'Show offline')) + '</span></label>' +
+            '    <label class="usn-switch"><input type="checkbox" data-usn="live"> <span>' + esc(t('live', 'Live traffic')) + '</span></label>' +
+            '    <button type="button" class="btn btn-default btn-sm" data-usn="refresh" title="' + esc(t('refresh', 'Refresh')) + '" aria-label="' + esc(t('refresh', 'Refresh')) + '"><i class="fa fa-arrows-rotate"></i></button>' +
+            '  </div>' +
+            '</div>' +
+            '<div class="usn-stats" data-usn="stats"></div>' +
+            '<div class="usn-map" data-usn="map"></div>';
+
+        var q = root.querySelector('[data-usn="query"]');
+        q.addEventListener('input', function () {
+            S.query = q.value.trim().toLowerCase();
+            renderMap();
+        });
+        var off = root.querySelector('[data-usn="offline"]');
+        off.checked = S.showOffline;
+        off.addEventListener('change', function () {
+            S.showOffline = off.checked;
+            savePrefs();
+            renderAll();
+        });
+        var live = root.querySelector('[data-usn="live"]');
+        live.checked = S.live;
+        live.addEventListener('change', function () {
+            S.live = live.checked;
+            savePrefs();
+            if (S.live) {
+                pollTraffic();
+            } else {
+                clearTimeout(trafficTimer);
+                trafficTimer = null;
+                S.rates = {};
+            }
+            updateRates();
+        });
+        root.querySelector('[data-usn="refresh"]').addEventListener('click', function () {
+            refresh(true);
+        });
+        root.querySelector('[data-usn="filters"]').addEventListener('click', function (e) {
+            var b = e.target.closest ? e.target.closest('button[data-filter]') : null;
+            if (b) {
+                S.filter = b.getAttribute('data-filter');
+                renderAll();
+            }
+        });
+        root.querySelector('[data-usn="map"]').addEventListener('click', function (e) {
+            var hitTile = e.target.closest ? e.target.closest('[data-mac]') : null;
+            if (hitTile) {
+                openDevice(hitTile.getAttribute('data-mac'));
+            }
+        });
+        root.querySelector('[data-usn="map"]').addEventListener('keydown', function (e) {
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.hasAttribute && e.target.hasAttribute('data-mac')) {
+                e.preventDefault();
+                openDevice(e.target.getAttribute('data-mac'));
+            }
+        });
+    }
+
+    function renderFilters() {
+        var box = root.querySelector('[data-usn="filters"]');
+        if (!box) {
+            return;
+        }
+        var lans = S.interfaces.filter(function (i) { return !i.uplink; });
+        if (S.filter !== 'all' && !S.interfaces.some(function (i) { return i.id === S.filter; })) {
+            S.filter = 'all';
+        }
+        var html = '<button type="button" role="tab" data-filter="all" class="' + (S.filter === 'all' ? 'is-active' : '') +
+            '" aria-selected="' + (S.filter === 'all') + '">' + esc(t('all', 'All')) + '</button>';
+        lans.forEach(function (i) {
+            var on = S.filter === i.id;
+            html += '<button type="button" role="tab" data-filter="' + esc(i.id) + '" class="' + (on ? 'is-active' : '') +
+                '" aria-selected="' + on + '">' + esc(i.name) + '</button>';
+        });
+        box.innerHTML = html;
+    }
+
+    function renderStats() {
+        var box = root.querySelector('[data-usn="stats"]');
+        if (!box) {
+            return;
+        }
+        var macs = Object.keys(S.devices);
+        var online = macs.filter(function (m) { return S.devices[m].online; }).length;
+        var lans = S.interfaces.filter(function (i) { return !i.uplink; });
+        var gwOk = S.gateways.filter(function (g) {
+            var s = String(g.status || '').toLowerCase();
+            return s === 'none' || s === 'online';
+        }).length;
+        box.innerHTML =
+            stat('fa-laptop', t('devices', 'Devices'), online + ' <small>' + esc(t('online', 'online').toLowerCase()) + '</small>',
+                (macs.length - online) + ' ' + esc(t('offline', 'offline').toLowerCase())) +
+            stat('fa-sitemap', t('networks', 'Networks'), String(lans.length),
+                lans.map(function (i) { return esc(i.name); }).join(' · ')) +
+            stat('fa-globe', t('gateways', 'Gateways'), S.gateways.length ? (gwOk + ' <small>/ ' + S.gateways.length + '</small>') : '&mdash;',
+                S.gateways.map(function (g) { return esc(g.name); }).join(' · ')) +
+            stat('fa-gauge-high', t('traffic', 'Traffic'), '<span data-usn-total>&mdash;</span>',
+                '<i class="fa fa-arrow-down"></i> / <i class="fa fa-arrow-up"></i>' +
+                (S.updated ? ' · ' + esc(t('updated', 'Updated')) + ' ' + esc(S.updated.toLocaleTimeString()) : ''));
+    }
+
+    function stat(icon, title, value, sub) {
+        return '<div class="usn-stat"><div class="usn-stat-icon"><i class="fa ' + icon + '" aria-hidden="true"></i></div>' +
+            '<div class="usn-stat-body"><div class="usn-stat-title">' + esc(title) + '</div>' +
+            '<div class="usn-stat-value">' + value + '</div><div class="usn-stat-sub">' + (sub || '&nbsp;') + '</div></div></div>';
+    }
+
+    function tile(d) {
+        var k = iconKey(d);
+        var meta = [d.ips[0] || '', d.vendor || ''].filter(Boolean).map(esc).join(' · ');
+        return '<div class="usn-tile' + (d.online ? '' : ' is-offline') + '" data-mac="' + esc(d.mac) + '" role="button" tabindex="0"' +
+            ' title="' + esc(label(d)) + '">' +
+            '<span class="usn-tile-icon"><i class="fa ' + ICONS[k] + '" aria-hidden="true"></i>' +
+            '<span class="usn-dot ' + (d.online ? 'is-on' : '') + '" aria-label="' + esc(d.online ? t('online', 'Online') : t('offline', 'Offline')) + '"></span></span>' +
+            '<span class="usn-tile-text"><span class="usn-tile-name">' + esc(label(d)) + '</span>' +
+            '<span class="usn-tile-meta">' + (meta || esc(d.mac)) + '</span></span>' +
+            '<span class="usn-tile-rate"></span>' +
+            '</div>';
+    }
+
+    function renderMap() {
+        var map = root.querySelector('[data-usn="map"]');
+        if (!map) {
+            return;
+        }
+        if (S.failed) {
+            map.innerHTML = '<div class="alert alert-warning">' + esc(t('error', 'Could not load network data.')) + '</div>';
+            return;
+        }
+
+        /* uplinks + firewall */
+        var uplinks = S.interfaces.filter(function (i) { return i.uplink; });
+        var sys = S.system || {};
+        var host = String(sys.name || '').trim() || 'OPNsense';
+        var ver = Array.isArray(sys.versions) ? String(sys.versions[0] || '') : '';
+
+        var html = '<div class="usn-top">';
+        html += '<div class="usn-node usn-node-internet"><span class="usn-node-icon"><i class="fa fa-globe" aria-hidden="true"></i></span>' +
+            '<span class="usn-node-text"><b>' + esc(t('internet', 'Internet')) + '</b>';
+        if (S.gateways.length) {
+            html += '<span class="usn-gws">' + S.gateways.map(function (g) {
+                var delay = g.delay && g.delay !== '~' ? ' · ' + esc(g.delay) : '';
+                return '<span class="usn-gw">' + esc(g.name) + ' ' + gatewayChip(g) + '<small>' + esc(g.address && g.address !== '~' ? g.address : '') + delay + '</small></span>';
+            }).join('') + '</span>';
+        }
+        html += '</span></div>';
+        html += '<div class="usn-link" aria-hidden="true"></div>';
+        html += '<div class="usn-node usn-node-fw"><span class="usn-node-icon"><i class="fa fa-shield-halved" aria-hidden="true"></i></span>' +
+            '<span class="usn-node-text"><b>' + esc(host) + '</b><small>' + esc(ver || t('firewall', 'Firewall')) + '</small>';
+        if (uplinks.length) {
+            html += '<span class="usn-wans">' + uplinks.map(function (u) {
+                return '<span class="usn-wan"><span class="usn-dot ' + (u.status === 'up' ? 'is-on' : '') + '"></span>' +
+                    esc(u.name) + ' <small>' + esc(u.addr4 || u.addr6 || u.status) + '</small></span>';
+            }).join('') + '</span>';
+        }
+        html += '</span></div></div>';
+
+        /* networks */
+        var nets = S.interfaces.filter(function (i) { return !i.uplink && (S.filter === 'all' || i.id === S.filter); });
+        var macs = Object.keys(S.devices).filter(function (m) { return matches(S.devices[m]); });
+        /* devices on an uplink (e.g. the ISP router) or on no known network */
+        var lanSet = {};
+        S.interfaces.forEach(function (i) {
+            if (!i.uplink) {
+                lanSet[i.id] = true;
+            }
+        });
+        var unassigned = macs.filter(function (m) { return !lanSet[S.devices[m].ifid]; });
+
+        html += '<div class="usn-link usn-link-down" aria-hidden="true"></div><div class="usn-nets">';
+        var shown = 0;
+        nets.forEach(function (n) {
+            var list = macs.filter(function (m) { return S.devices[m].ifid === n.id; }).map(function (m) { return S.devices[m]; });
+            list.sort(function (a, b) {
+                if (a.online !== b.online) {
+                    return a.online ? -1 : 1;
+                }
+                return ipSortKey(a.ips[0]) - ipSortKey(b.ips[0]) || label(a).localeCompare(label(b));
+            });
+            shown += list.length;
+            var online = list.filter(function (d) { return d.online; }).length;
+            html += '<section class="usn-net' + (n.status === 'up' ? '' : ' is-down') + '">' +
+                '<header class="usn-net-head"><span class="usn-net-icon"><i class="fa fa-network-wired" aria-hidden="true"></i></span>' +
+                '<span class="usn-net-title"><b>' + esc(n.name) + '</b><small>' + esc(n.addr4 || n.addr6 || n.device) +
+                (n.vlan ? ' · VLAN ' + esc(n.vlan) : '') + '</small></span>' +
+                '<span class="usn-net-side"><span class="usn-chip">' + online + ' / ' + list.length + '</span>' +
+                '<span class="usn-net-rate" data-usn-net-rate="' + esc(n.id) + '"></span></span></header>';
+            if (list.length) {
+                html += '<div class="usn-tiles">' + list.map(tile).join('') + '</div>';
+            } else {
+                html += '<div class="usn-empty">' + esc(S.query ? t('noMatch', 'No devices match your search.') : t('noDevices', 'No devices found on this network.')) + '</div>';
+            }
+            html += '</section>';
+        });
+        if (unassigned.length && S.filter === 'all') {
+            shown += unassigned.length;
+            html += '<section class="usn-net"><header class="usn-net-head"><span class="usn-net-icon"><i class="fa fa-ethernet" aria-hidden="true"></i></span>' +
+                '<span class="usn-net-title"><b>' + esc(t('upstream', 'Other')) + '</b><small>&nbsp;</small></span></header>' +
+                '<div class="usn-tiles">' + unassigned.map(function (m) { return tile(S.devices[m]); }).join('') + '</div></section>';
+        }
+        html += '</div>';
+        if (!nets.length && !shown) {
+            html += '<div class="usn-empty">' + esc(t('noDevices', 'No devices found.')) + '</div>';
+        }
+        map.innerHTML = html;
+        updateRates();
+    }
+
+    function renderAll() {
+        renderFilters();
+        renderStats();
+        renderMap();
+    }
+
+    /* -------------------------------------------------------- device dialog */
+    function openDevice(mac) {
+        var d = S.devices[mac];
+        if (!d) {
+            return;
+        }
+        var l = S.labels[mac] || null;
+        var current = (l && l.icon && ICONS[l.icon]) ? l.icon : 'auto';
+        var guess = guessIcon(d);
+        var r = deviceRate(d);
+        var net = S.interfaces.filter(function (i) { return i.id === d.ifid; })[0];
+
+        var info = [
+            [t('status', 'Status'), '<span class="usn-chip usn-chip-' + (d.online ? 'ok' : 'neutral') + '">' + esc(d.online ? t('online', 'Online') : t('offline', 'Offline')) + '</span>'],
+            [t('ip', 'IP address'), d.ips.length ? d.ips.map(esc).join('<br>') : '&mdash;'],
+            [t('mac', 'MAC address'), '<code>' + esc(d.mac) + '</code>'],
+            [t('vendor', 'Vendor'), esc(d.vendor) || '&mdash;'],
+            [t('hostname', 'Hostname'), esc(d.hostname) || '&mdash;'],
+            [t('network', 'Network'), esc(net ? net.name : d.ifname) || '&mdash;']
+        ];
+        if (S.live && (r.in || r.out)) {
+            info.push([t('traffic', 'Traffic'), rateHtml(r)]);
+        }
+
+        var icons = '<button type="button" class="usn-icon-opt" data-icon="auto" aria-pressed="' + (current === 'auto') + '" title="Auto">' +
+            '<i class="fa ' + ICONS[guess] + '"></i><span>Auto</span></button>';
+        Object.keys(ICONS).forEach(function (k) {
+            icons += '<button type="button" class="usn-icon-opt" data-icon="' + k + '" aria-pressed="' + (current === k) + '" title="' + esc(ICON_LABELS[k]) + '">' +
+                '<i class="fa ' + ICONS[k] + '"></i><span>' + esc(ICON_LABELS[k]) + '</span></button>';
+        });
+
+        var $body = $('<div class="usn-dialog"></div>');
+        $body.html(
+            '<table class="table table-condensed usn-info"><tbody>' +
+            info.map(function (row) { return '<tr><th>' + esc(row[0]) + '</th><td>' + row[1] + '</td></tr>'; }).join('') +
+            '</tbody></table>' +
+            '<div class="form-group"><label for="usn-name">' + esc(t('name', 'Name')) + '</label>' +
+            '<input id="usn-name" type="text" class="form-control" maxlength="64" autocomplete="off"></div>' +
+            '<div class="form-group"><label>' + esc(t('icon', 'Icon')) + '</label><div class="usn-icon-grid">' + icons + '</div></div>' +
+            '<div class="usn-dialog-msg text-danger" role="alert"></div>'
+        );
+        var $name = $body.find('#usn-name');
+        $name.val(l && l.name ? l.name : '');
+        $name.attr('placeholder', d.hostname || d.vendor || d.ips[0] || d.mac);
+        var chosen = current;
+        $body.on('click', '.usn-icon-opt', function () {
+            chosen = $(this).attr('data-icon');
+            $body.find('.usn-icon-opt').attr('aria-pressed', 'false');
+            $(this).attr('aria-pressed', 'true');
+        });
+
+        var buttons = [];
+        if (l) {
+            buttons.push({
+                label: t('reset', 'Reset'),
+                cssClass: 'btn-default pull-left',
+                action: function (dlg) {
+                    save(d.mac, '', 'auto', dlg, $body);
+                }
+            });
+        }
+        buttons.push({
+            label: t('cancel', 'Cancel'),
+            cssClass: 'btn-default',
+            action: function (dlg) { dlg.close(); }
+        });
+        buttons.push({
+            label: t('save', 'Save'),
+            cssClass: 'btn-primary',
+            hotkey: 13,
+            action: function (dlg) {
+                save(d.mac, String($name.val() || '').trim(), chosen, dlg, $body);
+            }
+        });
+
+        var title = label(d);
+        if (typeof BootstrapDialog === 'undefined') {
+            return;
+        }
+        BootstrapDialog.show({
+            title: $('<span></span>').text(title),
+            message: $body,
+            type: BootstrapDialog.TYPE_DEFAULT,
+            cssClass: 'usn-modal',
+            buttons: buttons,
+            onshown: function () { $name.trigger('focus'); }
+        });
+    }
+
+    function save(mac, name, icon, dlg, $body) {
+        var $msg = $body.find('.usn-dialog-msg');
+        $msg.text('');
+        if (name.length > 64 || /[<>\x00-\x1f\x7f]/.test(name)) {
+            $msg.text('Use up to 64 characters (no < or >).');
+            return;
+        }
+        if (icon === 'auto') {
+            icon = '';
+        }
+        var l = S.labels[mac];
+        var req;
+        if (!name && !icon) {
+            req = l ? postJson('/api/unisense/networkmap/del_device/' + encodeURIComponent(l.uuid), {}) :
+                Promise.resolve({ result: 'deleted' });
+        } else if (l) {
+            req = postJson('/api/unisense/networkmap/set_device/' + encodeURIComponent(l.uuid), { device: { mac: mac, name: name, icon: icon } });
+        } else {
+            req = postJson('/api/unisense/networkmap/add_device', { device: { mac: mac, name: name, icon: icon } });
+        }
+        dlg.enableButtons(false);
+        req.then(function (res) {
+            dlg.enableButtons(true);
+            if (res && (res.result === 'saved' || res.result === 'deleted')) {
+                if (!name && !icon) {
+                    delete S.labels[mac];
+                } else {
+                    S.labels[mac] = { uuid: res.uuid || (l && l.uuid) || '', name: name, icon: icon };
+                }
+                dlg.close();
+                renderAll();
+                /* sync uuids and validation state with the server */
+                fetchJson('/api/unisense/networkmap/search_device').then(function (data) {
+                    if (data) {
+                        var labels = {};
+                        rows(data).forEach(function (r) {
+                            var m = normMac(r && r.mac);
+                            if (m) {
+                                labels[m] = { uuid: r.uuid, name: String(r.name || ''), icon: String(r.icon || '') };
+                            }
+                        });
+                        S.labels = labels;
+                        renderAll();
+                    }
+                });
+                return;
+            }
+            var msg = t('saveError', 'Could not save the device label.');
+            if (res && res.validations && typeof res.validations === 'object') {
+                var v = Object.keys(res.validations).map(function (k) { return res.validations[k]; });
+                if (v.length) {
+                    msg = v.join(' ');
+                }
+            } else if (res && res.errorMessage) {
+                msg = res.errorMessage;
+            }
+            $msg.text(msg);
+        });
+    }
+
+    /* ---------------------------------------------------------- lifecycle */
+    var refreshTimer = null;
+    var refreshing = false;
+
+    function refresh(manual) {
+        if (refreshing) {
+            return;
+        }
+        refreshing = true;
+        clearTimeout(refreshTimer);
+        var btn = root.querySelector('[data-usn="refresh"] i');
+        if (btn && manual) {
+            btn.classList.add('fa-spin');
+        }
+        load().catch(function () {
+            S.failed = !S.loaded;
+        }).then(function () {
+            refreshing = false;
+            if (btn) {
+                btn.classList.remove('fa-spin');
+            }
+            renderAll();
+            if (S.live && !trafficTimer && !trafficBusy) {
+                pollTraffic();
+            }
+            refreshTimer = setTimeout(function () { refresh(false); }, 30000);
+        });
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+            refresh(false);
+            if (S.live) {
+                pollTraffic();
+            }
+        }
+    });
+
+    function start() {
+        renderShell();
+        refresh(false);   /* starts live traffic once the interfaces are known */
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+    } else {
+        start();
+    }
+
+    /* exposed for tests */
+    window.UniSenseNetworkMap = { guessIcon: guessIcon, inSubnet: inSubnet, state: S };
+})();

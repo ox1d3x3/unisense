@@ -90,14 +90,28 @@ for (const file of readdirSync(cssDir).filter(f => f.endsWith('.css'))) {
   });
 }
 
+// plugin stylesheets (Network Map): must parse; tokens there carry fallbacks on purpose
+const pluginCss = join(root, 'misc/theme-unisense/src/opnsense/www/css');
+for (const dir of readdirSync(pluginCss, { withFileTypes: true }).filter(d => d.isDirectory())) {
+  for (const file of readdirSync(join(pluginCss, dir.name)).filter(f => f.endsWith('.css'))) {
+    try {
+      postcss.parse(readFileSync(join(pluginCss, dir.name, file), 'utf8'), { from: file });
+    } catch (e) {
+      fail(`${dir.name}/${file}`, `parse error: ${e.message}`);
+    }
+  }
+}
+
 for (const [v, where] of used) {
   if (!defined.has(v)) fail('tokens', `${v} is used (${where}) but never defined`);
 }
 
-try {
-  new vm.Script(readFileSync(join(theme, 'build/js/theme.js'), 'utf8'), { filename: 'theme.js' });
-} catch (e) {
-  fail('theme.js', e.message);
+for (const js of [join(theme, 'build/js/theme.js'), join(root, 'misc/theme-unisense/src/opnsense/www/js/unisense/networkmap.js')]) {
+  try {
+    new vm.Script(readFileSync(js, 'utf8'), { filename: js });
+  } catch (e) {
+    fail(js, e.message);
+  }
 }
 
 if (errors) {

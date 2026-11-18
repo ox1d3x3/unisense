@@ -5,10 +5,12 @@
   "license": "BSD-2-Clause",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "lint": "node scripts/lint.mjs",
-    "test": "node scripts/build.mjs && node scripts/lint.mjs"
+    "lint": "node scripts/lint.mjs && eslint \"misc/theme-unisense/src/opnsense/www/**/*.js\"",
+    "test": "node scripts/build.mjs --check && npm run lint && sh tests/test-install.sh"
   },
   "devDependencies": {
+    "eslint": "9.39.5",
+    "globals": "17.14.0",
     "postcss": "8.5.33",
     "sass": "1.108.2"
   }

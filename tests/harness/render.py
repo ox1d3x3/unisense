@@ -12,7 +12,8 @@ from volt import make_env, get_form, get_form_grid
 from menu import build_menu
 
 HERE = Path(__file__).resolve().parent
-THEME = HERE.parents[1] / 'misc/theme-unisense/src/opnsense/www/themes/unisense'
+PLUGIN = HERE.parents[1] / 'misc/theme-unisense/src/opnsense'
+THEME = PLUGIN / 'www/themes/unisense'
 
 
 def php_list(src, func):
@@ -41,7 +42,7 @@ def main():
 
     import volt
     volt.LEGACY_FORMS = "fields['sections']" not in (app / 'views/layout_partials/base_form.volt').read_text()
-    env = make_env([app / 'views', HERE / 'templates'], THEME, core / 'src/opnsense/www')
+    env = make_env([app / 'views', PLUGIN / 'mvc/app/views', HERE / 'templates'], THEME, core / 'src/opnsense/www')
     env.globals['core_has'] = lambda u: (core / 'src/opnsense/www' / u.lstrip('/')).exists()
     ctrl = app / 'controllers/OPNsense'
 
@@ -55,6 +56,8 @@ def main():
                        vars={'localForm': get_form(ctrl / 'Syslog/forms/local.xml'),
                              'formDialogDestination': get_form(ctrl / 'Syslog/forms/dialogDestination.xml'),
                              'formGridDestination': get_form_grid(ctrl / 'Syslog/forms/dialogDestination.xml')}),
+        'networkmap': dict(view='OPNsense/Unisense/networkmap', url='/ui/unisense/networkmap',
+                           title='Lobby: Network Map', vars={}),
         'monit': dict(view='OPNsense/Monit/index', url='/ui/monit', title='Services: Monit: Settings',
                       vars={'formGeneralSettings': get_form(ctrl / 'Monit/forms/general.xml'),
                             'formDialogEditAlert': get_form(ctrl / 'Monit/forms/alerts.xml'),
@@ -63,7 +66,7 @@ def main():
     }
 
     for name, p in pages.items():
-        menu = build_menu(app / 'models', p['url'])
+        menu = build_menu(app / 'models', p['url'], [PLUGIN / 'mvc/app/models'])
         ctx = dict(
             ui_theme='unisense', langcode='en', headTitle=p['title'], title=p['title'],
             system_hostname='opnsense', system_domain='home.arpa', session_username='root',
@@ -82,7 +85,7 @@ def main():
 
     # hand-written legacy (PHP) page and login page templates
     for name in ['legacy', 'login']:
-        menu = build_menu(app / 'models', '/system_general.php')
+        menu = build_menu(app / 'models', '/system_general.php', [PLUGIN / 'mvc/app/models'])
         tpl = env.get_template(f'{name}.html')
         html = tpl.render(menuSystem=menu, ui_theme='unisense')
         (out / 'pages' / f'{name}.html').write_text(html)

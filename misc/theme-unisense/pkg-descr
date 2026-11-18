@@ -7,11 +7,15 @@ six accent colours, switchable from the top bar without a page reload.
 Dashboard widgets, data grids, dialogs, legacy pages and the sign-in page
 are all styled, and the theme makes no external requests.
 
+It also adds Lobby: Network Map, a live topology of the internet, the
+firewall, its networks and every device, with per-device traffic and
+custom device names and icons.
+
 Plugin Changelog
 ================
 
 1.0
 
-* Initial release
+* Initial release: theme and Network Map
 
 WWW: https://github.com/ox1d3x3/unisense

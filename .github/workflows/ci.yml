@@ -23,28 +23,16 @@ jobs:
       - run: npm ci
       - name: Compiled CSS is up to date
         run: node scripts/build.mjs --check
-      - name: Lint stylesheets and theme.js
-        run: node scripts/lint.mjs
+      - name: Lint stylesheets and scripts (ESLint)
+        run: npm run lint
+      - name: Plugin checks (PHP syntax, XML, model masks)
+        run: sh scripts/check-plugin.sh
       - name: Lint shell scripts
         run: |
           sudo apt-get install -y shellcheck >/dev/null
-          shellcheck -s sh install.sh scripts/package.sh
-      - name: Installer round trip
-        run: |
-          set -eu
-          T=$(mktemp -d)
-          mkdir -p "$T/usr/local/opnsense/www/themes" "$T/conf"
-          touch "$T/usr/local/opnsense/www/index.php"
-          echo '<opnsense><theme>opnsense</theme></opnsense>' > "$T/conf/config.xml"
-          export UNISENSE_PREFIX="$T"
-          sh install.sh --local .
-          test -s "$T/usr/local/opnsense/www/themes/unisense/build/css/main.css"
-          sh install.sh --status
-          sh install.sh --local .   # reinstall
-          sed -i 's/>opnsense</>unisense</' "$T/conf/config.xml"
-          if sh install.sh --uninstall; then echo "should refuse while active"; exit 1; fi
-          sh install.sh --uninstall --force
-          test ! -e "$T/usr/local/opnsense/www/themes/unisense"
+          shellcheck -s sh install.sh scripts/package.sh scripts/check-plugin.sh tests/test-install.sh
+      - name: Installer tests
+        run: sh tests/test-install.sh
       - name: Package
         run: sh scripts/package.sh
       - uses: actions/upload-artifact@v7

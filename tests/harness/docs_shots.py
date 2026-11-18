@@ -56,6 +56,10 @@ def main():
         shot(b, 'dashboard-dark', 'dashboard', 'dark', wait=4500)
         shot(b, 'dashboard-light', 'dashboard', 'light', wait=4500)
         shot(b, 'grid-light', 'cron', 'light')
+        shot(b, 'networkmap-dark', 'networkmap', 'dark', wait=7000)
+        shot(b, 'networkmap-light', 'networkmap', 'light', wait=7000)
+        shot(b, 'networkmap-device', 'networkmap', 'light', wait=2500,
+             action=lambda pg: (pg.click('[data-mac="7c:2e:0d:de:ad:01"]'), pg.wait_for_timeout(700)))
         shot(b, 'sidebar-collapsed', 'cron', 'dark', init="localStorage.setItem('toggle_sidebar_preset','1');", action=flyout)
         shot(b, 'dialog-light', 'cron', 'light', action=dialog)
         shot(b, 'legacy-dark', 'legacy', 'dark')
@@ -63,6 +67,7 @@ def main():
         shot(b, 'login-dark', 'login', 'dark', size=(1200, 800))
         shot(b, 'mobile-dashboard', 'dashboard', 'dark', size=(390, 844), wait=3500, mobile=True)
         shot(b, 'mobile-menu', 'cron', 'light', size=(390, 844), action=drawer, mobile=True)
+        shot(b, 'mobile-networkmap', 'networkmap', 'dark', size=(390, 844), wait=4000, mobile=True)
         b.close()
     httpd.shutdown()
 

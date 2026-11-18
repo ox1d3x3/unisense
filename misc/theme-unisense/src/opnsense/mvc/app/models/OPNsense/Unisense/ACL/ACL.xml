@@ -1,0 +1,9 @@
+<acl>
+    <page-unisense-networkmap>
+        <name>Lobby: Network Map</name>
+        <patterns>
+            <pattern>ui/unisense/networkmap*</pattern>
+            <pattern>api/unisense/networkmap/*</pattern>
+        </patterns>
+    </page-unisense-networkmap>
+</acl>

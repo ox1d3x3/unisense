@@ -1,0 +1,28 @@
+<model>
+    <mount>//OPNsense/unisense/networkmap</mount>
+    <version>1.0.0</version>
+    <description>UniSense network map device labels</description>
+    <items>
+        <devices>
+            <device type="ArrayField">
+                <mac type="MacAddressField">
+                    <Required>Y</Required>
+                    <Constraints>
+                        <check001>
+                            <type>UniqueConstraint</type>
+                            <ValidationMessage>This device already has a label.</ValidationMessage>
+                        </check001>
+                    </Constraints>
+                </mac>
+                <name type="TextField">
+                    <Mask>/^[^\x00-\x1f\x7f&lt;&gt;]{0,64}$/u</Mask>
+                    <ValidationMessage>Use up to 64 characters (no &lt; or &gt;).</ValidationMessage>
+                </name>
+                <icon type="TextField">
+                    <Mask>/^(|auto|laptop|desktop|mobile|tablet|tv|game|server|nas|printer|camera|ap|switch|router|iot|speaker|watch|car|other)$/</Mask>
+                    <ValidationMessage>Unknown icon.</ValidationMessage>
+                </icon>
+            </device>
+        </devices>
+    </items>
+</model>

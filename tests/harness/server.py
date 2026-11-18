@@ -8,7 +8,10 @@
 """
 import argparse
 import json
+import os
 import random
+import re
+import uuid
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -17,7 +20,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 HERE = Path(__file__).resolve().parent
-THEME = HERE.parents[1] / 'misc/theme-unisense/src/opnsense/www/themes/unisense'
+PLUGIN_WWW = HERE.parents[1] / 'misc/theme-unisense/src/opnsense/www'
+THEME = PLUGIN_WWW / 'themes/unisense'
 
 
 def dashboard_modules(core_www):
@@ -103,14 +107,57 @@ MOCKS = {
         {'uuid': 'gw3', 'name': 'WG_VPN', 'gateway': '10.10.0.1', 'status': 'Latency', 'loss': '0.0 %',
          'delay': '212.4 ms', 'stddev': '12.1 ms', 'defaultgw': False}]),
     '/api/interfaces/overview/interfaces_info': grid([
-        {'identifier': 'lan', 'description': 'LAN', 'status': 'up', 'enabled': True, 'config': {},
+        {'identifier': 'lan', 'description': 'LAN', 'status': 'up', 'enabled': True, 'config': {}, 'device': 'igc1',
+         'macaddr': '00:0d:b9:aa:00:01', 'link_type': 'static', 'gateways': [],
          'media': '2500baseT <full-duplex>', 'addr4': '192.168.1.1/24', 'addr6': 'fd00:1::1/64'},
-        {'identifier': 'wan', 'description': 'WAN', 'status': 'up', 'enabled': True, 'config': {},
+        {'identifier': 'wan', 'description': 'WAN', 'status': 'up', 'enabled': True, 'config': {}, 'device': 'igc0',
+         'macaddr': '00:0d:b9:aa:00:00', 'link_type': 'dhcp', 'gateways': ['100.64.12.1'],
          'media': '1000baseT <full-duplex>', 'addr4': '100.64.12.34/22', 'addr6': ''},
-        {'identifier': 'opt1', 'description': 'IOT', 'status': 'up', 'enabled': True, 'config': {},
+        {'identifier': 'opt1', 'description': 'IOT', 'status': 'up', 'enabled': True, 'config': {}, 'device': 'igc1_vlan20',
+         'macaddr': '00:0d:b9:aa:00:01', 'link_type': 'static', 'gateways': [], 'vlan_tag': 20,
          'media': 'Ethernet autoselect', 'addr4': '192.168.20.1/24', 'addr6': ''},
-        {'identifier': 'opt2', 'description': 'GUEST', 'status': 'down', 'enabled': True, 'config': {},
+        {'identifier': 'opt2', 'description': 'GUEST', 'status': 'down', 'enabled': True, 'config': {}, 'device': 'igc1_vlan30',
+         'macaddr': '00:0d:b9:aa:00:01', 'link_type': 'static', 'gateways': [], 'vlan_tag': 30,
          'media': 'no carrier', 'addr4': '192.168.30.1/24', 'addr6': ''}]),
+    '/api/routes/gateway/status': {'status': 'ok', 'items': [
+        {'name': 'WAN_DHCP', 'address': '100.64.12.1', 'status': 'none', 'status_translated': 'Online',
+         'loss': '0.0 %', 'delay': '4.2 ms', 'stddev': '0.4 ms'},
+        {'name': 'WAN_DHCP6', 'address': 'fe80::1', 'status': 'down', 'status_translated': 'Offline',
+         'loss': '100.0 %', 'delay': '~', 'stddev': '~'}]},
+    '/api/diagnostics/interface/get_arp': [
+        {'mac': '00:0d:b9:aa:00:01', 'ip': '192.168.1.1', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': True,
+         'expired': False, 'manufacturer': 'PC Engines', 'hostname': ''},
+        {'mac': 'a4:83:e7:11:22:33', 'ip': '192.168.1.20', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': False,
+         'expired': False, 'manufacturer': 'Apple, Inc.', 'hostname': 'mahabubs-macbook'},
+        {'mac': 'f0:2f:74:44:55:66', 'ip': '192.168.1.10', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': False,
+         'expired': False, 'manufacturer': 'ASUSTek COMPUTER INC.', 'hostname': 'zimaos'},
+        {'mac': '3c:5a:b4:77:88:99', 'ip': '192.168.1.31', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': False,
+         'expired': False, 'manufacturer': 'Google, Inc.', 'hostname': 'pixel-9'},
+        {'mac': '00:11:32:aa:bb:cc', 'ip': '192.168.1.5', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': False,
+         'expired': False, 'manufacturer': 'Synology Incorporated', 'hostname': 'diskstation'},
+        {'mac': 'b4:fb:e4:12:34:56', 'ip': '192.168.1.2', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': False,
+         'expired': False, 'manufacturer': 'Ubiquiti Inc', 'hostname': 'u6-lite'},
+        {'mac': '7c:2e:0d:de:ad:01', 'ip': '192.168.1.42', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': False,
+         'expired': False, 'manufacturer': 'Sony Interactive Entertainment', 'hostname': 'ps5'},
+        {'mac': '24:62:ab:00:00:01', 'ip': '192.168.20.11', 'intf': 'igc1_vlan20', 'intf_description': 'IOT', 'permanent': False,
+         'expired': False, 'manufacturer': 'Espressif Inc.', 'hostname': 'shelly-plug-1'},
+        {'mac': 'ec:71:db:00:00:02', 'ip': '192.168.20.15', 'intf': 'igc1_vlan20', 'intf_description': 'IOT', 'permanent': False,
+         'expired': False, 'manufacturer': 'Reolink Innovation Limited', 'hostname': 'driveway-cam'},
+        {'mac': '00:1e:58:00:00:03', 'ip': '100.64.12.1', 'intf': 'igc0', 'intf_description': 'WAN', 'permanent': False,
+         'expired': False, 'manufacturer': 'D-Link Corporation', 'hostname': ''},
+        {'mac': 'de:ad:be:ef:00:07', 'ip': '192.168.1.66', 'intf': 'igc1', 'intf_description': 'LAN', 'permanent': False,
+         'expired': True, 'manufacturer': '', 'hostname': ''}],
+    '/api/kea/leases4/search': grid([
+        {'address': '192.168.1.31', 'hwaddr': '3c:5a:b4:77:88:99', 'hostname': 'Pixel-9.', 'if': 'igc1', 'if_descr': 'LAN'},
+        {'address': '192.168.1.77', 'hwaddr': '8c:85:90:00:00:09', 'hostname': 'Rehenomas-iPad', 'if': 'igc1', 'if_descr': 'LAN',
+         'mac_info': 'Apple, Inc.'},
+        {'address': '192.168.30.20', 'hwaddr': '9a:00:00:00:00:30', 'hostname': 'guest-laptop', 'if': 'igc1_vlan30',
+         'if_descr': 'GUEST'}]),
+    '/api/dnsmasq/leases/search': grid([]),
+    # ISC DHCP (core up to 25.7, plugin later): different field names
+    '/api/dhcpv4/leases/search_lease': grid([
+        {'address': '192.168.1.5', 'mac': '00:11:32:aa:bb:cc', 'hostname': 'diskstation', 'man': 'Synology Incorporated',
+         'if_descr': 'LAN', 'status': 'online'}]),
     '/api/core/service/search': grid([
         {'id': 'configd', 'name': 'configd', 'description': 'System Configuration Daemon', 'running': 1, 'locked': 1},
         {'id': 'unbound', 'name': 'unbound', 'description': 'Unbound DNS', 'running': 1, 'locked': 0},
@@ -143,6 +190,27 @@ MOCKS = {
 }
 
 
+LABELS = {}
+NAME_RE = re.compile(r'^[^\x00-\x1f\x7f<>]{0,64}$')
+ICON_RE = re.compile(r'^(|auto|laptop|desktop|mobile|tablet|tv|game|server|nas|printer|camera|ap|switch|router|iot|speaker|watch|car|other)$')
+NOT_FOUND = set()   # endpoints that should answer 404 (none by default)
+
+
+def validate_label(dev, own_uuid):
+    """mirror of the NetworkMap.xml model constraints"""
+    errs = {}
+    mac = str(dev.get('mac', ''))
+    if not re.match(r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$', mac):
+        errs['device.mac'] = 'Invalid MAC address.'
+    elif any(v['mac'] == mac.lower() and u != own_uuid for u, v in LABELS.items()):
+        errs['device.mac'] = 'This device already has a label.'
+    if not NAME_RE.match(str(dev.get('name', ''))):
+        errs['device.name'] = 'Use up to 64 characters (no < or >).'
+    if not ICON_RE.match(str(dev.get('icon', ''))):
+        errs['device.icon'] = 'Unknown icon.'
+    return errs
+
+
 class Handler(SimpleHTTPRequestHandler):
     core_www = None
     pages = None
@@ -173,6 +241,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def api(self):
         path = urlparse(self.path).path
+        if path.startswith('/api/unisense/networkmap/'):
+            return self.labels_api(path[len('/api/unisense/networkmap/'):])
+        if path in NOT_FOUND:
+            return self._json({'errorMessage': 'Endpoint not found', 'errorTitle': 'Error'}, 404)
         if path in ('/api/core/dashboard/get_dashboard', '/api/core/dashboard/get_defaults'):
             return self._json({'modules': dashboard_modules(self.core_www), 'dashboard': DASHBOARD})
         if path == '/api/diagnostics/cpu_usage/stream':
@@ -183,6 +255,14 @@ class Handler(SimpleHTTPRequestHandler):
             return self._sse(lambda i: {'time': t0 + i, 'interfaces': {
                 k: {'inbytes': random.randint(200000, 6000000), 'outbytes': random.randint(50000, 1500000)}
                 for k in IFACES}})
+        if path.startswith('/api/diagnostics/traffic/top/'):
+            ips = {'lan': ['192.168.1.20', '192.168.1.10', '192.168.1.31', '192.168.1.42'],
+                   'opt1': ['192.168.20.15']}
+            out = {}
+            for intf in path.rsplit('/', 1)[1].split(','):
+                out[intf] = {'records': [{'address': ip, 'rate_bits_in': random.randint(20000, 90000000),
+                                          'rate_bits_out': random.randint(10000, 9000000)} for ip in ips.get(intf, [])]}
+            return self._json(out)
         if path == '/api/diagnostics/firewall/stream_log':
             rules = [('r1', 'Default deny / state violation rule', 'block', 'wan'),
                      ('r2', 'Allow LAN to any', 'pass', 'lan'),
@@ -198,6 +278,10 @@ class Handler(SimpleHTTPRequestHandler):
                         'src': f'192.168.1.{random.randint(2, 200)}', 'dst': f'1.1.{random.randint(1, 9)}.1',
                         'dstport': str(random.choice([53, 443, 80, 123]))}
             return self._sse(ev, count=40, interval=0.2)
+        if path == '/api/kea/leases4/search' and os.environ.get('UNISENSE_HARNESS_XSS'):
+            data = json.loads(json.dumps(MOCKS[path]))
+            data['rows'][-1]['hostname'] = '<img src=x onerror=alert(1)>'
+            return self._json(data)
         for key in (path, path.rstrip('/'), path.rstrip('/') + '/'):
             if key in MOCKS:
                 return self._json(MOCKS[key])
@@ -205,10 +289,42 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(grid([]))
         return self._json({})
 
+    def labels_api(self, action):
+        parts = action.strip('/').split('/')
+        name, arg = parts[0], (parts[1] if len(parts) > 1 else None)
+        body = {}
+        if getattr(self, 'body', b''):
+            try:
+                body = json.loads(self.body.decode())
+            except ValueError:
+                body = {}
+        if name == 'search_device':
+            return self._json(grid([dict(uuid=u, **v) for u, v in sorted(LABELS.items())]))
+        if self.command != 'POST':
+            return self._json({'errorMessage': 'POST required'}, 405)
+        if name in ('add_device', 'set_device'):
+            dev = body.get('device') or {}
+            errs = validate_label(dev, None if name == 'add_device' else arg)
+            if errs:
+                return self._json({'result': 'failed', 'validations': errs})
+            uid = arg if name == 'set_device' else str(uuid.uuid4())
+            if name == 'set_device' and uid not in LABELS:
+                return self._json({'result': 'failed'})
+            LABELS[uid] = {'mac': dev['mac'].lower(), 'name': dev.get('name', ''), 'icon': dev.get('icon', '')}
+            return self._json({'result': 'saved', 'uuid': uid} if name == 'add_device' else {'result': 'saved'})
+        if name == 'del_device':
+            if arg in LABELS:
+                del LABELS[arg]
+                return self._json({'result': 'deleted'})
+            return self._json({'result': 'not found'})
+        return self._json({'errorMessage': 'Endpoint not found'}, 404)
+
     def translate_path(self, path):
         p = urlparse(path).path
         if p.startswith('/ui/themes/unisense/'):
             return str(THEME / p[len('/ui/themes/unisense/'):])
+        if p.startswith('/ui/') and (PLUGIN_WWW / p[4:]).is_file():
+            return str(PLUGIN_WWW / p[4:])
         if p.startswith('/ui/'):
             return str(self.core_www / p[4:])
         if p.startswith('/pages/'):
@@ -222,8 +338,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get('Content-Length') or 0)
-        if length:
-            self.rfile.read(length)
+        self.body = self.rfile.read(length) if length else b''
         if self.path.startswith('/api/'):
             return self.api()
         self.send_error(405)
