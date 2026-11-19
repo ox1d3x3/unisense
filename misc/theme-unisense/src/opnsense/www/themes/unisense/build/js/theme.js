@@ -296,6 +296,25 @@
         }
     }
 
+    /* ring charts with long labels (Firewall rule names): legend under the
+       chart, where each label has the full width, instead of cut off beside it */
+    function legendBelow(chart) {
+        var cfg = chart.config;
+        var lg = cfg && cfg.options && cfg.options.plugins && cfg.options.plugins.legend;
+        if (!lg || (cfg.type !== 'doughnut' && cfg.type !== 'pie') || cfg.options.circumference === 180) {
+            return;
+        }
+        var labels = (chart.data && chart.data.labels) || [];
+        var long = labels.some(function (l) {
+            return String(l).length > 24;
+        });
+        var want = long ? 'bottom' : 'left';
+        if (lg.position !== want && (lg.position === 'left' || lg.position === 'bottom')) {
+            lg.position = want;
+            lg.align = long ? 'start' : 'center';
+        }
+    }
+
     /* line charts: a light wash under the line instead of a 50% fill */
     function softenFill(ds) {
         var c = ds.backgroundColor;
@@ -329,6 +348,7 @@
                     try {
                         var sets = (chart && chart.data && chart.data.datasets) || [];
                         var line = chart.config && chart.config.type === 'line';
+                        legendBelow(chart);
                         for (var i = 0; i < sets.length; i++) {
                             recolorDataset(sets[i]);
                             if (line) {
