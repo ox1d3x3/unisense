@@ -411,13 +411,16 @@ def main():
                 if (/hidden|clip/.test(cs.overflowX)) { l = Math.max(l, pr.left); rt = Math.min(rt, pr.right); }
                 if (/hidden|clip/.test(cs.overflowY)) { t = Math.max(t, pr.top); bt = Math.min(bt, pr.bottom); }
             }
-            return Math.round(Math.min((rt - l) / r.width, (bt - t) / r.height) * 100);
-        }).filter(v => v < 97)"""
+            const pct = Math.round(Math.min((rt - l) / r.width, (bt - t) / r.height) * 100);
+            return pct < 97 ? `${e.className.split(' ').pop()} ${Math.round(r.width)}x${Math.round(r.height)} ${pct}% in ${Math.round(e.parentElement.getBoundingClientRect().width)}` : null;
+        }).filter(Boolean)"""
         pg.goto(f'{base}/cron.html'); pg.wait_for_timeout(1200)
-        check(pg.evaluate(cut_js, '.tabulator input[type=checkbox]') == [], 'row and "select all" checkboxes are not clipped')
+        cut = pg.evaluate(cut_js, '.tabulator input[type=checkbox]')
+        check(cut == [], 'row and "select all" checkboxes are not clipped' + (f': {cut[:4]}' if cut else ''))
         pg.goto(f'{base}/monit.html'); pg.wait_for_timeout(1000)
-        pg.click('.nav-tabs a >> nth=2'); pg.wait_for_timeout(700)
-        check(pg.evaluate(cut_js, '.tabulator-cell .btn') == [], 'row command buttons are not clipped')
+        pg.click('.nav-tabs a >> nth=2'); pg.wait_for_timeout(1500)
+        cut = pg.evaluate(cut_js, '.tabulator-cell .btn')
+        check(cut == [], 'row command buttons are not clipped' + (f': {cut[:4]}' if cut else ''))
         check(not errs, 'no console errors: ' + '; '.join(errs))
         ctx.close()
 
