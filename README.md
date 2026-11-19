@@ -104,24 +104,25 @@ That's it: the theme and the Network Map page are installed and the GUI switches
 - **Keep all sections open**: an option in the same menu that shows every menu section at once (clicking a header still folds just that one)
 
 **Network Map** (Lobby → Network Map)
-- Internet → firewall → networks → devices as a tree: a trunk down the left, one branch per network, devices filling each network left to right; gateway health and WAN addresses on top
+- Laid out in columns like a network diagram: Internet and the firewall on the left, one card per network in the middle, each network's devices to its right; gateway health and WAN addresses on the Internet and firewall cards
 - Every device that is online (ARP) or has a DHCP lease (Kea, Dnsmasq or ISC), grouped by network, with vendor and hostname
 - Live per-device download/upload rates, network totals, search, per-network filters, hide offline devices
 - Click a device to give it a name and an icon — stored in the OPNsense configuration, so every browser and admin sees it (and it is included in backups)
 - Icons are guessed automatically (phones, laptops, TVs, consoles, cameras, NAS, access points, smart-home…)
-- Live data flow: streaks of light run along every link — download one way, upload the other — at a speed that follows the traffic; the trunk carries the sum of the networks below it
+- Live data flow: a dotted "string" runs along every connector — download dots towards the devices, upload dots back — at a speed that follows the traffic; idle links stay a plain line
 - A live dot right after each device's name, which ripples while the device is busy
 
 **Traffic Map** (Lobby → Traffic Map)
 - World map of where your traffic goes right now: countries shaded by traffic, arcs from your firewall with streaks of light (download towards you, upload away); speeds glide and arcs fade in and out between refreshes
 - Live download/upload sparklines; the table updates in place and rows slide to their new rank
 - Top 20 countries with live download/upload, share, connections, data transferred and the networks (e.g. GOOGLE, AMAZON-02) behind them
+- **All countries**: every country your network has talked to, recorded every minute even while the page is closed — downloaded, uploaded, connections, when it was last seen; sortable and searchable
 - Hover a country for details, click a row for its top networks, pause/resume
 - IP-to-country data is downloaded to the firewall and refreshed daily at 01:00 — lookups never leave your network
 
 **Coverage**
 - Every MVC page: forms, tabs, data grids (Tabulator), edit dialogs, dropdowns, tooltips, popovers, the status dialog
-- Dashboard widgets as cards; slim rounded gauges, ring charts with dot legends, thin smooth traffic lines and a modern series palette — all follow the accent colour and recolour when you switch modes
+- Dashboard widgets as cards. Memory, Disk, Firewall States, Swap and Mbuf become live meters: the value in large type, a live graph of the last minutes, a capacity bar and a legend. Ring charts with dot legends, thin smooth traffic lines, pill-shaped thermal bars, a modern series palette — all follow the accent colour and recolour when you switch modes
 - Classic PHP pages (bare inputs, `opnsense_standard_table_form` tables), the date picker, tokenizer, jqTree and nv.d3 charts
 - Collapsed sidebar (core's icon rail with hover fly-outs) and the phone drawer
 - Sign-in page: app-icon card, show-password button, Caps Lock hint, busy state while signing in
@@ -196,8 +197,10 @@ curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" https://raw.githubuserconten
 
 **Lobby → Network Map** shows your network the way a controller does:
 
-- **Top:** the internet, your gateways with their status and latency, and the firewall with its WAN addresses.
-- **Below:** one row per network (LAN, VLANs, …) hanging off the firewall, with its subnet, how many devices are online, and live traffic. Devices fill each row left to right; each shows its name with a live dot, IP, vendor and live download/upload.
+- **Left:** the internet, your gateways with their status and latency, and the firewall with its WAN addresses and total traffic.
+- **Middle:** one card per network (LAN, VLANs, …), connected to the firewall, with its subnet, how many devices are online, and live traffic.
+- **Right:** each network's devices, side by side; each shows its name with a live dot, IP, vendor and live download/upload.
+- On narrower screens the networks stack under the firewall, each with its devices underneath.
 - **Click a device** for details (IP, MAC, vendor, hostname, network, traffic) and to set a **name** and **icon**. *Reset* returns to the detected name and the automatic icon.
 
 Everything comes from OPNsense itself — interfaces, gateways, the ARP table, DHCP leases and the built-in traffic monitor; nothing is installed or running in the background. Live traffic samples the LAN interfaces every few seconds while the page is open (the same tool as *Reporting → Traffic*); untick **Live traffic** to turn it off. Device names live in the configuration under *UniSense*, are part of configuration backups, and can be used by any administrator.
@@ -212,8 +215,9 @@ Access is a normal privilege, **Lobby: Network Map**, so you can grant it to oth
 
 - **Map:** every country your firewall has connections with is shaded by how much traffic it carries; arcs run from your firewall's country to the busiest ones, with streaks of light flowing in (download) and out (upload) at a speed that follows the traffic. Hover a country for its rates, connections and networks.
 - **Top 20 countries:** download and upload now, share of all traffic, open connections, data transferred over those connections, and the networks (autonomous systems) behind them. Click a row for its top five networks.
+- **All countries:** every country your network has talked to since the history started, with data downloaded and uploaded, connections, and when it was last seen ("now" with the live rate if it is active). Sort by any column, search by name; *Clear history* starts afresh. Countries not seen for 90 days are dropped. Clicking the *Countries* card opens this list.
 
-**Where the data comes from.** The page reads the firewall's state table (`pfctl`), the same connections *Firewall → Diagnostics → States* lists, and merges the LAN and NAT copies of each connection. Rates are the change in byte counters between two reads (every 3 seconds while the page is open; nothing runs in the background otherwise).
+**Where the data comes from.** The page reads the firewall's state table (`pfctl`), the same connections *Firewall → Diagnostics → States* lists, and merges the LAN and NAT copies of each connection. Rates are the change in byte counters between two reads (every 3 seconds while the page is open). For the *All countries* history a second cron job, **UniSense: record Traffic Map history**, reads the state table once a minute, also while the page is closed; it adds only what moved since the previous read, and keeps the totals in `/var/db/unisense/trafficmap-history.json` (written at most once a minute). Connections that start and end between two reads are not counted.
 
 **IP databases.** Two free databases are stored on the firewall in `/var/db/unisense` (about 40 MB) and looked up locally — no address is ever sent to a web service:
 
@@ -276,7 +280,7 @@ The installer refreshes OPNsense's cache key so browsers fetch new files. If you
 <details>
 <summary><b>Some charts use orange/blue/green.</b></summary>
 
-Dashboard gauges and the CPU graph follow your accent colour. Multi-series charts (traffic, interface statistics, firewall rules) keep OPNsense's categorical palette so their series stay distinguishable.
+Dashboard meters and the CPU graph follow your accent colour. Multi-series charts (traffic, interface statistics, firewall rules) keep OPNsense's categorical palette so their series stay distinguishable.
 </details>
 
 <details>
