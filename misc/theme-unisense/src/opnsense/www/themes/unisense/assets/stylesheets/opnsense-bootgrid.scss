@@ -499,6 +499,9 @@
 .bootgrid-header .actionBar .search .search-field {
     border-left: 0;
     padding-left: 4px;
+    /* the hidden clear button sits after the input, so Bootstrap squares it off */
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
 }
 .bootgrid-header .actionBar .actions.btn-group .btn {
     color: var(--us-text-2);
@@ -518,4 +521,71 @@
 .tabulator-row .tabulator-cell[tabulator-field="commands"] {
     white-space: nowrap;
     overflow-wrap: normal;
+}
+
+// the row-selection column (40px): core pads it like a text column, which
+// leaves 13px for the 16px "select all" checkbox and clips it — centre the
+// checkbox without padding instead, in the heading and in every row
+.tabulator .tabulator-header .tabulator-col.tabulator-row-header,
+.tabulator .tabulator-row .tabulator-cell.tabulator-row-header {
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+  text-align: center;
+}
+.tabulator .tabulator-header .tabulator-col.tabulator-row-header {
+  .tabulator-col-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 0;
+  }
+  .tabulator-col-title-holder,
+  .tabulator-col-title { overflow: visible; text-overflow: clip; }
+}
+.tabulator .tabulator-row .tabulator-cell.tabulator-row-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// row command buttons (edit / copy / delete / details): core sizes this
+// column for its own small buttons; with a text column's padding the last
+// button was clipped. Tight padding here, compact buttons, never wrapped.
+.tabulator .tabulator-row .tabulator-cell:has(> .btn) {
+  padding-right: 3px !important;
+  padding-left: 3px !important;
+  white-space: nowrap;
+}
+.tabulator .tabulator-row .tabulator-cell > .btn.btn-xs {
+  min-width: 24px;
+  margin: 0 1px;
+  padding-right: 4px;
+  padding-left: 4px;
+}
+
+// the footer (pager, "Showing …", add / delete / export) wraps on phones
+// instead of squeezing its buttons into a 16px strip
+.tabulator .tabulator-footer,
+.tabulator .tabulator-footer .tabulator-footer-contents {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+.tabulator .tabulator-footer .tabulator-footer-contents {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.tabulator .tabulator-footer .bootgrid-footer-commands { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+// Empty grids: core sizes the table for a one-row footer (120px). On phones the
+// footer wraps to three rows and the Add/Export buttons were cut off, so let an
+// empty table size itself to its content.
+@media (max-width: 767px) {
+  .tabulator:has(.tabulator-tableholder .tabulator-placeholder) {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    > .tabulator-tableholder { height: auto !important; max-height: none !important; min-height: 64px; }
+  }
 }

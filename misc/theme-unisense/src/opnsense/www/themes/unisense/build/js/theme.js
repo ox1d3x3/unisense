@@ -284,6 +284,11 @@
             o.elements = o.elements || {};
             o.elements.line = Object.assign(o.elements.line || {}, { borderWidth: 1.75, tension: 0.35 });
             o.elements.point = Object.assign(o.elements.point || {}, { radius: 0, hoverRadius: 3, hitRadius: 8 });
+            /* live traffic graph: it scrolls about 20px a second, so 20 frames a
+               second still move it one pixel per frame, for two thirds the work */
+            if (o.plugins && o.plugins.streaming && (o.plugins.streaming.frameRate || 30) > 20) {
+                o.plugins.streaming.frameRate = 20;
+            }
             var scales = o.scales || {};
             Object.keys(scales).forEach(function (k) {
                 var sc = scales[k];
@@ -395,6 +400,19 @@
             return;
         }
         S.prototype.__unisense = true;
+        /* the CPU graph scrolls 1px every 50ms: 30 frames a second look the
+           same as 60 and leave half the main thread for menus and scrolling */
+        var streamTo = S.prototype.streamTo;
+        if (typeof streamTo === 'function') {
+            S.prototype.streamTo = function () {
+                try {
+                    if (this.options && !this.options.limitFPS) {
+                        this.options.limitFPS = 30;
+                    }
+                } catch (e) { /* ignore */ }
+                return streamTo.apply(this, arguments);
+            };
+        }
         S.prototype.addTimeSeries = function (ts, opts) {
             try {
                 /* the dashboard CPU widget: remember which series is which */
@@ -648,7 +666,6 @@
         this.legend = node.querySelector('.us-meter-legend');
         this.key = 'unisense.meter.' + w.id;
         this.hist = [];
-        this.offset = 0;
         this.hover = -1;
         try {
             var saved = JSON.parse(window.sessionStorage.getItem(this.key) || '[]');

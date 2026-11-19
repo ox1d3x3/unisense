@@ -399,6 +399,28 @@ def main():
         check(not errs, 'no console errors: ' + '; '.join(errs))
         ctx.close()
 
+        # ------------------------------------------------ nothing cut off in grids
+        print('grid controls fully visible')
+        ctx = b.new_context(viewport={'width': 1440, 'height': 900})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        cut_js = """(sel) => [...document.querySelectorAll(sel)].filter(e => e.offsetParent).map(e => {
+            const r = e.getBoundingClientRect(); let l = r.left, rt = r.right, t = r.top, bt = r.bottom;
+            for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) {
+                const cs = getComputedStyle(p); if (/auto|scroll/.test(cs.overflowX + cs.overflowY)) break;
+                const pr = p.getBoundingClientRect();
+                if (/hidden|clip/.test(cs.overflowX)) { l = Math.max(l, pr.left); rt = Math.min(rt, pr.right); }
+                if (/hidden|clip/.test(cs.overflowY)) { t = Math.max(t, pr.top); bt = Math.min(bt, pr.bottom); }
+            }
+            return Math.round(Math.min((rt - l) / r.width, (bt - t) / r.height) * 100);
+        }).filter(v => v < 97)"""
+        pg.goto(f'{base}/cron.html'); pg.wait_for_timeout(1200)
+        check(pg.evaluate(cut_js, '.tabulator input[type=checkbox]') == [], 'row and "select all" checkboxes are not clipped')
+        pg.goto(f'{base}/monit.html'); pg.wait_for_timeout(1000)
+        pg.click('.nav-tabs a >> nth=2'); pg.wait_for_timeout(700)
+        check(pg.evaluate(cut_js, '.tabulator-cell .btn') == [], 'row command buttons are not clipped')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
         # ------------------------------------------------------ tablet widths
         for w in (800, 1024):
             print(f'tablet {w}px')

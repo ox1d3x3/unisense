@@ -50,6 +50,24 @@ DETECT = r"""
     }
     return false;
   };
+  /* how much of a control is actually visible: clipped by any ancestor that
+     hides overflow (scroll containers are fine: the user can scroll) */
+  const visibleRect = (el) => {
+    const r = el.getBoundingClientRect();
+    let l = r.left, t = r.top, rt = r.right, b = r.bottom;
+    for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) {
+      const cs = getComputedStyle(e);
+      if (cs.display === 'contents') continue;
+      const ox = cs.overflowX, oy = cs.overflowY;
+      if (ox === 'auto' || ox === 'scroll' || oy === 'auto' || oy === 'scroll') break;
+      const er = e.getBoundingClientRect();
+      if (ox === 'hidden' || ox === 'clip') { l = Math.max(l, er.left); rt = Math.min(rt, er.right); }
+      if (oy === 'hidden' || oy === 'clip') { t = Math.max(t, er.top); b = Math.min(b, er.bottom); }
+    }
+    return { w: Math.max(0, rt - l), h: Math.max(0, b - t) };
+  };
+  const CONTROL = 'input:not([type=hidden]), select, textarea, button, .btn, .bootstrap-select > .dropdown-toggle, ' +
+    '.fa-toggle-on, .fa-toggle-off, .command-toggle, .label, .badge, .usn-chip, .us-sw';
   const ownText = (el) => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 1);
   const root = scope ? document.querySelector(scope) : document.body;
   if (!root) return out;
@@ -63,6 +81,13 @@ DETECT = r"""
     const text = (el.innerText || '').trim().slice(0, 60);
     const add = (kind, extra) => out.push(Object.assign({ kind, sig: sig(el), text, w: Math.round(r.width) }, extra || {}));
     if (r.right > vw + 1 && !scrollParentX(el) && cs.position !== 'fixed') add('beyond-viewport', { right: Math.round(r.right) });
+    if (el.matches(CONTROL) && cs.opacity !== '0' && r.width >= 6 && r.height >= 6 && !el.closest('.selectpicker, select.bs-select-hidden')) {
+      const v = visibleRect(el);
+      if (v.w > 0 && v.h > 0 && (v.w < r.width - 1.5 || v.h < r.height - 1.5)) {
+        out.push({ kind: 'cut-control', sig: sig(el), text: (el.getAttribute('aria-label') || el.title || el.type || text || el.tagName).slice(0, 40),
+                   w: Math.round(r.width), need: Math.round(r.width) + 'x' + Math.round(r.height), have: Math.round(v.w) + 'x' + Math.round(v.h) });
+      }
+    }
     const ox = cs.overflowX, oy = cs.overflowY;
     if ((ox === 'hidden' || ox === 'clip') && el.scrollWidth > el.clientWidth + 2 && text) {
       add(cs.textOverflow === 'ellipsis' ? 'ellipsis' : 'clipped-x', { need: el.scrollWidth, have: el.clientWidth });
@@ -125,7 +150,11 @@ def main():
             ctx = b.new_context(viewport={'width': w, 'height': 900})
             ctx.add_init_script("localStorage.setItem('unisense.mode','dark');")
             page = ctx.new_page()
+            errs = []
+            page.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
+            page.on('pageerror', lambda e: errs.append(str(e)))
             for sub, name in pages:
+                errs.clear()
                 try:
                     page.goto(f'http://127.0.0.1:{a.port}/pages/{sub}{name}.html', wait_until='load', timeout=30000)
                     page.wait_for_timeout(700)
@@ -146,6 +175,10 @@ def main():
                 except Exception as e:
                     print(f'  {name}@{w}: {type(e).__name__}: {str(e)[:80]}', file=sys.stderr)
                     continue
+                for msg in errs:
+                    if 'favicon' in msg or 'net::ERR' in msg or 'Failed to load resource' in msg:
+                        continue
+                    results.append((None, [{'kind': 'console-error', 'sig': msg[:90], 'text': msg[:50], 'w': 0}], {}))
                 for mid, found, sz in results:
                     for f in found:
                         key = (f['kind'], f['sig'], w)
@@ -158,7 +191,8 @@ def main():
             ctx.close()
         b.close()
 
-    rows = sorted(findings.items(), key=lambda kv: (kv[0][0] == 'ellipsis', -len(kv[1]['pages']), -kv[1]['count']))
+    order = {'cut-control': 0, 'console-error': 1, 'beyond-viewport': 2, 'clipped-x': 3, 'clipped-y': 4, 'spills': 5, 'ellipsis': 6}
+    rows = sorted(findings.items(), key=lambda kv: (order.get(kv[0][0], 9), -len(kv[1]['pages']), -kv[1]['count']))
     print(f'{len(rows)} finding groups')
     for (kind, sig, w), g in rows[:a.top]:
         ex = g['example']

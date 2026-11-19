@@ -69,6 +69,32 @@
   max-width: 100%;
 }
 .bootstrap-select > .dropdown-toggle { padding-right: 28px; }
+// …and their button is as wide as the value it shows (bounded by the row)
+html .btn-group > .bootstrap-select:not(.input-group-btn) > .dropdown-toggle,
+html .actionBar .bootstrap-select:not(.input-group-btn) > .dropdown-toggle,
+html .filters-wrap .bootstrap-select:not(.input-group-btn) > .dropdown-toggle {
+  width: max-content;
+  min-width: 100%;
+  max-width: 100%;
+}
+// a toolbar row does not squeeze a dropdown below the width of its value
+.actionBar > .btn-group:has(> .bootstrap-select) { flex: 0 0 auto; }
+// several dropdowns in one toolbar group (Aliases: Filter type + Categories):
+// each as wide as its value, with a little air between them
+html .actionBar .btn-group > .bootstrap-select { flex: 0 0 auto; }
+html .actionBar .btn-group > .bootstrap-select + .bootstrap-select { margin-left: 8px; }
+// Firewall > Rules: the page's own style fixes the interface / category
+// filters at a shrinkable 150px, which cuts "Nothing selected" — size them
+// to their value instead (phones keep core's full-width rule)
+@media (min-width: 768px) {
+  html #interface_select_container,
+  html #type_filter_container { flex: 0 0 auto; min-width: 150px; }
+  // the grid's action buttons stay one group on one line; the search box
+  // is the part of the toolbar that gives way
+  html .bootgrid-header .actionBar > .actions { flex: 0 0 auto; }
+  html .bootgrid-header .actionBar > .actions .btn-group { flex-wrap: nowrap; }
+  html .bootgrid-header .actionBar > .search { flex: 1 1 160px; min-width: 160px; }
+}
 
 // Bootstrap 3 draws a focus ring on links after a mouse click too (e.g. the
 // "full help" switch stayed ringed): keep it for keyboard focus only
