@@ -168,213 +168,174 @@
 }
 .usn-nw { white-space: nowrap; }
 
-/* ------------------------------------------------------------- topology
-   A left-aligned tree. The trunk runs down through the centre of the node
-   icons (35px from the left edge); every network hangs off it on its own
-   branch, so the map reads top to bottom, devices left to right. */
-.usn-top {
+/* ------------------------------------------------------------- the board
+   Three columns, like a network diagram read left to right:
+     Internet + firewall | one card per network | that network's devices
+   The connectors are small SVGs placed over the board by networkmap.js
+   (layoutLinks) from where the cards really are. */
+.usn-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  column-gap: 64px;
+  align-items: start;
+}
+.usn-links {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.usn-core,
+.usn-rows { position: relative; z-index: 1; }
+
+.usn-core {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  gap: 40px;
 }
-
 .usn-node {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  min-width: 280px;
-  max-width: 100%;
-  padding: 12px 16px;
+  gap: 3px;
+  padding: 18px 16px 16px;
   border: 1px solid var(--usn-line);
   border-radius: var(--usn-radius);
   background: var(--usn-surface);
   box-shadow: var(--usn-shadow);
+  text-align: center;
 }
-.usn-node-text { display: flex; flex-direction: column; min-width: 0; }
-.usn-node-text > b { color: var(--usn-heading); font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
-.usn-node-text > small { color: var(--usn-text-3); font-size: 12px; }
+.usn-node .usn-node-icon { width: 44px; height: 44px; margin-bottom: 8px; border-radius: 12px; font-size: 18px; }
+.usn-node-name { color: var(--usn-heading); font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.usn-node-sub { color: var(--usn-text-3); font-size: 12px; }
 .usn-node-fw .usn-node-icon { background: var(--usn-accent); color: #ffffff; }
+.usn-node-rate { margin-top: 6px; }
+.usn-node-rate .usn-rate { color: var(--usn-accent); font-size: 12.5px; font-weight: 600; }
+.usn-node-rate .usn-rate .fa { color: inherit; opacity: .7; }
 
 .usn-gws,
 .usn-wans {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   margin-top: 4px;
 }
 .usn-gw,
 .usn-wan {
   display: inline-flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 6px;
+  gap: 2px 6px;
   color: var(--usn-text-2);
   font-size: 12.5px;
   font-weight: 500;
 }
+.usn-gw { flex-direction: column; }
+.usn-gw-name { display: inline-flex; align-items: center; gap: 6px; }
 .usn-gw small,
 .usn-wan small { color: var(--usn-text-3); font-weight: 400; }
 
+/* ---------------------------------------------------------- connectors */
 .usn-link {
-  position: relative;
-  width: 70px;
-  height: 34px;
-}
-.usn-link > .usn-wire { left: 30px; }
-
-/* ------------------------------------------------- live data-flow "strings"
-   A static 2px line plus two lanes of glowing streaks: download (accent)
-   travels away from the Internet, upload (green) travels towards it. Lanes
-   are real elements moved with transform by the Web Animations API
-   (networkmap.js), so the GPU composites them and nothing is repainted per
-   frame; the traffic rate sets the speed via updatePlaybackRate().
-   One streak every 46px — FLOW_PERIOD in networkmap.js. */
-.usn-wire {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 10px;
-  overflow: hidden;
-  pointer-events: none;
+  overflow: visible;
+  will-change: transform;         /* own layer: a moving link repaints alone */
 }
-.usn-wire::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 4px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--usn-line);
-}
-.usn-lane {
-  position: absolute;
-  top: -46px;                   /* one period of overhang for a seamless loop */
-  bottom: -46px;
-  width: 4px;
-  border-radius: 2px;
+.usn-link path { fill: none; stroke-linecap: round; }
+.usn-link-base { stroke: var(--usn-line); stroke-width: 2; }
+.usn-link.is-busy .usn-link-base { stroke: color-mix(in srgb, var(--usn-accent) 22%, var(--usn-line)); }
+/* the "string": round dots 10px apart riding the line */
+.usn-link-flow {
+  stroke-width: 3.2;
+  stroke-dasharray: 0 10;
   opacity: 0;
   transition: opacity .35s linear;
-  will-change: transform;
 }
-.usn-lane.is-on { opacity: 1; }
-/* vertical: download streaks head down (bright end at the bottom),
-   upload streaks head up (bright end at the top) */
-.usn-lane-dl {
-  left: 3px;
-  background:
-    linear-gradient(to bottom, transparent 0 26%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 64%, var(--usn-accent) 96%, transparent 100%) 1px 0 / 2px 46px repeat-y,
-    linear-gradient(to bottom, transparent 0 62%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 94%, transparent 100%) 0 0 / 4px 46px repeat-y;
-}
-.usn-lane-ul {
-  left: 3px;
-  background:
-    linear-gradient(to top, transparent 0 26%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 64%, var(--usn-ok) 96%, transparent 100%) 1px 0 / 2px 46px repeat-y,
-    linear-gradient(to top, transparent 0 62%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 94%, transparent 100%) 0 0 / 4px 46px repeat-y;
-}
-/* horizontal: download heads right (towards the devices), upload left */
-.usn-wire.is-x {
-  bottom: auto;
-  height: 10px;
-}
-.usn-wire.is-x::before { top: 4px; bottom: auto; left: 0; right: 0; width: auto; height: 2px; }
-.usn-wire.is-x .usn-lane { top: auto; bottom: auto; left: -46px; right: -46px; width: auto; height: 4px; }
-.usn-wire.is-x .usn-lane-dl {
-  top: 3px;
-  background:
-    linear-gradient(to right, transparent 0 26%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 64%, var(--usn-accent) 96%, transparent 100%) 0 1px / 46px 2px repeat-x,
-    linear-gradient(to right, transparent 0 62%, color-mix(in srgb, var(--usn-accent) 30%, transparent) 94%, transparent 100%) 0 0 / 46px 4px repeat-x;
-}
-.usn-wire.is-x .usn-lane-ul {
-  top: 3px;
-  background:
-    linear-gradient(to left, transparent 0 26%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 64%, var(--usn-ok) 96%, transparent 100%) 0 1px / 46px 2px repeat-x,
-    linear-gradient(to left, transparent 0 62%, color-mix(in srgb, var(--usn-ok) 30%, transparent) 94%, transparent 100%) 0 0 / 46px 4px repeat-x;
-}
+.usn-link-flow.is-on { opacity: 1; }
+.usn-link-dl { stroke: var(--usn-accent); }
+.usn-link-ul { stroke: var(--usn-ok); stroke-dashoffset: 5; }
 
-/* trunk segment: from the previous card (or the firewall) down past this
-   card; the last one stops at its branch */
-.usn-trunk { top: -18px; bottom: -1px; left: -40px; }
-.usn-net:last-child > .usn-trunk { bottom: auto; height: 54px; }
-.usn-branch { top: 26px; left: -35px; width: 35px; }
-
-/* --------------------------------------------------------------- networks */
-.usn-nets {
+/* -------------------------------------------------------------- networks */
+.usn-rows {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  position: relative;
-  padding: 17px 0 0 70px;
-}
-
-.usn-net {
-  position: relative;
   min-width: 0;
+}
+.usn-row {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  column-gap: 56px;
+  align-items: center;
+}
+/* the lane is at least as tall as its card, so short lanes line up with it */
+.usn-row > .usn-lane { min-height: 100%; }
+.usn-row.is-down { opacity: .7; }
+
+.usn-netcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 88px;
+  padding: 14px 16px;
   border: 1px solid var(--usn-line);
   border-radius: var(--usn-radius);
   background: var(--usn-surface);
   box-shadow: var(--usn-shadow);
 }
+.usn-net-icon { width: 40px; height: 40px; font-size: 16px; }
+.usn-net-title { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; }
+.usn-net-title > b { color: var(--usn-heading); font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.usn-net-title > small { color: var(--usn-text-3); font-size: 12px; overflow-wrap: anywhere; }
+.usn-net-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 5px; }
+.usn-net-rate .usn-rate { color: var(--usn-accent); font-size: 12px; font-weight: 600; }
+.usn-net-rate .usn-rate .fa { color: inherit; opacity: .7; }
 
-.usn-net.is-down { opacity: .7; }
-
-.usn-net-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--usn-line-2);
-}
-.usn-net-title { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
-.usn-net-title b { color: var(--usn-heading); font-size: 15px; font-weight: 600; }
-.usn-net-title small {
-  overflow: hidden;
-  color: var(--usn-text-3);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.usn-net-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.usn-tiles {
+/* a network's devices: chips filling the lane left to right */
+.usn-lane {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  align-self: stretch;
+  align-content: center;
+  gap: 10px;
+  min-width: 0;
   padding: 12px;
+  border: 1px dashed var(--usn-line);
+  border-radius: var(--usn-radius);
+  background: color-mix(in srgb, var(--usn-surface-2) 55%, transparent);
 }
+.usn-lane.is-empty { display: flex; align-items: center; padding: 0 18px; }
+.usn-lane .usn-empty { padding: 0; text-align: left; }
 
 .usn-tile {
   display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 10px;
+  column-gap: 11px;
   min-width: 0;
-  padding: 9px 10px;
+  min-height: 60px;
+  padding: 10px 12px;
   border: 1px solid var(--usn-line-2);
   border-radius: var(--usn-radius-sm);
-  background: var(--usn-surface-2);
+  background: var(--usn-surface);
+  box-shadow: var(--usn-shadow);
   cursor: pointer;
-  transition: border-color .1s linear, background-color .1s linear;
+  transition: border-color .12s linear, transform .12s var(--usn-ease, ease);
 }
 .usn-tile:hover,
 .usn-tile:focus-visible {
   border-color: var(--usn-accent);
-  background: var(--usn-hover);
   outline: none;
+  transform: translateY(-1px);
 }
-.usn-tile.is-offline { opacity: .55; }
+.usn-tile.is-offline { opacity: .55; box-shadow: none; }
 
 .usn-tile-icon {
   position: relative;
   display: inline-flex;
-  grid-row: 1 / span 2;
   align-items: center;
   justify-content: center;
   width: 34px;
@@ -438,20 +399,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.usn-tile-rate {
-  grid-column: 2;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.usn-tile-rate:empty { display: none; }
-/* live traffic on: every tile keeps a rate line, so tiles never change height
-   (and the grid never jumps) when a device starts or stops sending */
-.usn-live .usn-tile-rate,
-.usn-live .usn-tile-rate:empty { display: block; height: 16px; line-height: 16px; }
-.usn-live .usn-tile-rate .usn-rate { line-height: 16px; }
-.usn-live .usn-net-rate { display: block; min-height: 17px; }
+/* rate on the right: download over upload */
+.usn-tile-rate { text-align: right; }
+.usn-tile-rate .usn-rate { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; color: var(--usn-accent); font-weight: 600; }
+.usn-tile-rate .usn-rate .fa { color: inherit; opacity: .7; }
+.usn-tile-rate .usn-rate-ul { color: var(--usn-ok-text, var(--usn-ok)); }
+.usn-tile-rate .usn-rate .fa { margin: 0 3px 0 0; }
+.usn-live .usn-net-rate { min-height: 17px; }
 
 /* live indicator next to the traffic figures: a static dot that flashes
    once (Web Animations, opacity only) whenever new traffic data arrives —
@@ -550,15 +504,20 @@
 .usn-dialog-msg:empty { display: none; }
 
 /* ------------------------------------------------------------------ small */
+/* narrower than the three columns: Internet/firewall side by side on top,
+   then each network card with its devices underneath (only the
+   Internet -> firewall link is drawn) */
+.usn-map { container-type: inline-size; }
+@container (max-width: 1000px) {
+  .usn-board { grid-template-columns: minmax(0, 1fr); row-gap: 20px; }
+  .usn-core { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
+  .usn-row { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+  .usn-lane { border-style: solid; }
+}
 @media (max-width: 767px) {
   .usn-search { flex: 1 1 100%; }
   .usn-tools { margin-left: 0; }
-  .usn-nets { padding-left: 52px; }
-  .usn-link { width: 52px; }
-  .usn-trunk { left: -22px; }
-  .usn-branch { left: -17px; width: 17px; }
-  .usn-node { min-width: 0; width: 100%; }
-  .usn-tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 10px; }
+  .usn-lane { grid-template-columns: minmax(0, 1fr); }
   .usn-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .usn-stat { padding: 10px 12px; gap: 10px; }
   .usn-stat-icon { width: 30px; height: 30px; font-size: 13px; }

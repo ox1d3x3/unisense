@@ -154,45 +154,47 @@ def main():
             heights |= set(pg.evaluate("[...document.querySelectorAll('.usn-tile:not(.is-offline)')].map(t => Math.round(t.getBoundingClientRect().height))"))
             pg.wait_for_timeout(4300)
         check(len(heights) == 1, f'tiles keep one height while traffic comes and goes ({sorted(heights)})')
-        check(pg.locator('.usn-net', has_text='Loopback').count() == 0 and pg.locator('button[data-filter="lo0"]').count() == 0,
+        check(pg.locator('.usn-row', has_text='Loopback').count() == 0 and pg.locator('button[data-filter="lo0"]').count() == 0,
               'loopback is not shown')
         # the mock's traffic is random and can be idle for a poll: wait for a busy one
         lanes = ripples = 0
         for _ in range(8):
-            lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane.is-on')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
+            lanes = pg.evaluate("[...document.querySelectorAll('.usn-link-flow.is-on')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
             ripples = pg.locator('.usn-tile.is-active .usn-ripple').count()
             if lanes >= 4 and ripples >= 1:
                 break
             pg.wait_for_timeout(1500)
-        check(lanes >= 4, f'live data flow runs on the links ({lanes} lanes)')
+        check(lanes >= 4, f'live data flow runs on the links ({lanes} strings)')
         check(ripples >= 1, 'busy devices ripple')
         check(pg.evaluate("""[...document.querySelectorAll('.usn-tile')].every(t => {
             const n = t.querySelector('.usn-tile-name'); const i = n && n.querySelector('.usn-live-ind');
             return i && i.previousElementSibling && i.previousElementSibling.classList.contains('usn-tile-label');
         })"""), 'the live indicator sits right after each device name')
         geo = pg.evaluate("""(() => {
-            const fw = document.querySelector('.usn-node-fw .usn-node-icon').getBoundingClientRect();
-            const nets = [...document.querySelectorAll('.usn-net')].map(n => n.getBoundingClientRect());
-            const trunks = [...document.querySelectorAll('.usn-trunk')].map(w => w.getBoundingClientRect());
-            const br = [...document.querySelectorAll('.usn-branch')].map(w => w.getBoundingClientRect());
-            return { fwx: fw.x + fw.width / 2, sameX: new Set(nets.map(r => Math.round(r.x))).size === 1,
-                     stacked: nets.every((r, i) => i === 0 || r.y > nets[i - 1].y + nets[i - 1].height - 1),
-                     trunkX: trunks.map(r => r.x + r.width / 2), branchW: br.map(r => Math.round(r.width)),
-                     branchEnd: br.map((r, i) => Math.round(r.right - nets[i].x)) };
+            const r = e => e.getBoundingClientRect();
+            const inet = r(document.querySelector('.usn-node-internet')), fw = r(document.querySelector('.usn-node-fw'));
+            const rows = [...document.querySelectorAll('.usn-row')].map(row => ({
+                card: r(row.querySelector('.usn-netcard')), lane: r(row.querySelector('.usn-lane')) }));
+            const links = [...document.querySelectorAll('.usn-link')];
+            return { coreLeft: fw.right < Math.min(...rows.map(x => x.card.left)), inetAbove: inet.bottom <= fw.top,
+                     cardsLeft: rows.every(x => x.card.right < x.lane.left),
+                     cardsCol: new Set(rows.map(x => Math.round(x.card.left))).size === 1,
+                     rows: rows.length, links: links.length,
+                     curves: links.filter(l => /C/.test(l.querySelector('path').getAttribute('d'))).length };
         })()""")
-        check(geo['sameX'] and geo['stacked'], 'networks are stacked top to bottom in one column')
-        check(all(abs(x - geo['fwx']) < 2 for x in geo['trunkX']), f"the trunk runs straight down from the firewall ({geo['trunkX']} vs {geo['fwx']})")
-        check(all(w > 20 for w in geo['branchW']) and all(abs(e) <= 1 for e in geo['branchEnd']), f"each network has a branch to the trunk ({geo['branchW']})")
+        check(geo['coreLeft'] and geo['inetAbove'], 'Internet above the firewall, in the left column')
+        check(geo['cardsCol'] and geo['cardsLeft'], 'one column of network cards, each with its devices to the right')
+        check(geo['links'] == 1 + 2 * geo['rows'] and geo['curves'] == geo['rows'], f"connectors: Internet-firewall, a curve to each network, a line to each lane ({geo['links']})")
         pg.uncheck('[data-usn="live"]'); pg.wait_for_timeout(200)
-        lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
-        check(lanes == 0 and pg.locator('.usn-lane.is-on').count() == 0, 'data flow stops with live traffic off')
+        lanes = pg.evaluate("[...document.querySelectorAll('.usn-link-flow')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
+        check(lanes == 0 and pg.locator('.usn-link-flow.is-on').count() == 0, 'data flow stops with live traffic off')
         pg.check('[data-usn="live"]'); pg.wait_for_timeout(4500)
         check(pg.locator('#mainmenu a[href="/ui/unisense/networkmap"].active').count() == 1, 'menu entry is highlighted')
         pg.fill('[data-usn="query"]', 'pixel'); pg.wait_for_timeout(150)
         check(pg.locator('.usn-tile').count() == 1, 'search narrows the list')
         pg.fill('[data-usn="query"]', ''); pg.wait_for_timeout(150)
         pg.click('button[data-filter="opt1"]'); pg.wait_for_timeout(150)
-        check(pg.locator('.usn-net').count() == 1 and pg.locator('.usn-tile').count() == 2, 'network filter shows one network')
+        check(pg.locator('.usn-row').count() == 1 and pg.locator('.usn-tile').count() == 2, 'network filter shows one network')
         pg.click('button[data-filter="all"]'); pg.uncheck('[data-usn="offline"]'); pg.wait_for_timeout(150)
         check(pg.locator('.usn-tile.is-offline').count() == 0, 'offline devices can be hidden')
         pg.check('[data-usn="offline"]')
@@ -253,6 +255,22 @@ def main():
         pg.wait_for_timeout(3500)
         check(pg.evaluate("document.querySelector('.utm-row[data-cc=\"US\"]') === window.__usRow"), 'table rows are updated in place, not rebuilt')
         check(pg.evaluate("!!document.querySelector('.utm-spark path.utm-spark-line').getAttribute('d')"), 'live throughput sparklines')
+        # every country ever seen: the history behind the "All countries" tab
+        pg.click('[data-utm-view="all"]')
+        pg.wait_for_selector('.utm-hist-row', timeout=8000)
+        n_all = pg.locator('.utm-hist-row').count()
+        check(n_all > 16 and pg.is_hidden('[data-utm="table"]'), f'All countries lists every country recorded ({n_all})')
+        check(pg.locator('.utm-hist-row[data-cc="CN"] .utm-c-now', has_text='—').count() == 1 and
+              'ago' in pg.inner_text('.utm-hist-row[data-cc="CN"] .utm-c-last'), 'countries seen earlier show when, and no live rate')
+        check(pg.locator('.utm-hist-row[data-cc="US"].is-live').count() == 1, 'countries talking right now are marked live')
+        check(pg.inner_text('[data-utm="all-count"]').strip() == str(n_all), 'tab shows how many countries')
+        pg.click('.utm-hist th[data-utm-sort="name"]'); pg.wait_for_timeout(100)
+        names = pg.evaluate("[...document.querySelectorAll('.utm-hist-row td:nth-child(2)')].map(t => t.innerText.trim())")
+        check(names == sorted(names, key=str.lower), 'sortable by country name')
+        pg.fill('[data-utm="search"]', 'zeal'); pg.wait_for_timeout(300)
+        check(pg.locator('.utm-hist-row').count() == 1 and pg.locator('.utm-hist-row[data-cc="NZ"]').count() == 1, 'search narrows the list')
+        pg.fill('[data-utm="search"]', ''); pg.click('[data-utm-view="top"]'); pg.wait_for_timeout(100)
+        check(pg.is_visible('[data-utm="table"]') and pg.is_hidden('[data-utm="search-wrap"]'), 'back to the top 20')
         check(pg.locator('img.utm-flag').count() >= 14 and pg.locator('img.utm-flag.is-missing').count() == 0, 'flags load')
         check('Unknown' in pg.inner_text('.utm-table') and 'AS0' not in pg.inner_text('.utm-table'), 'unknown country without a fake network')
         box = pg.locator('[data-utm="mapbox"]').bounding_box()
