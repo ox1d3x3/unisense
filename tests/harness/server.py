@@ -399,6 +399,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({'ok': True, 'db': self.tm_db()})
         if action == 'update':
             return self._json({'status': 'started'})
+        if action.startswith('conns/'):
+            return self._json(self.tm_conns(action.split('/', 1)[1].upper()))
         if action == 'history':
             return self._json(self.tm_history())
         if action == 'reset':
@@ -440,6 +442,32 @@ class Handler(SimpleHTTPRequestHandler):
                         'conns': 200 // (i + 1) + 1, 'first': now - 86400 * 5, 'last': now - 3600 * (i * 3 + 1)})
         out.sort(key=lambda c: c['bytes_in'] + c['bytes_out'], reverse=True)
         return {'ok': True, 'ts': now, 'since': now - 86400 * 6, 'countries': out}
+
+    TM_LOCAL = ['192.168.1.10', '192.168.1.20', '192.168.1.31', '192.168.1.42', '192.168.20.15', '192.168.1.5']
+    TM_PORTS = [(443, 'HTTPS', 'tcp'), (443, 'HTTPS', 'udp'), (53, 'DNS', 'udp'), (123, 'NTP', 'udp'),
+                (27015, 'Steam', 'udp'), (3478, 'STUN/TURN', 'udp'), (5228, 'Google push', 'tcp'), (8443, 'HTTPS alt', 'tcp')]
+
+    def tm_conns(self, cc):
+        if cc == 'UNKNOWN':
+            cc = '??'
+        rnd = random.Random(cc)
+        rows = []
+        for ccc, dn, up, conns, nets in self.TM_COUNTRIES:
+            if cc not in ('ALL', ccc):
+                continue
+            for i in range(min(conns, 60)):
+                asn, org = nets[i % len(nets)]
+                port, svc, proto = self.TM_PORTS[rnd.randrange(len(self.TM_PORTS))]
+                busy = i < 4
+                rows.append({'proto': proto, 'local': self.TM_LOCAL[rnd.randrange(len(self.TM_LOCAL))],
+                             'lport': str(rnd.randint(40000, 65000)),
+                             'remote': '%d.%d.%d.%d' % (rnd.randint(1, 223), rnd.randint(0, 255), rnd.randint(0, 255), rnd.randint(1, 254)),
+                             'rport': str(port), 'service': svc, 'cc': ccc, 'asn': asn, 'org': org,
+                             'bytes_in': rnd.randint(2000, 90000000), 'bytes_out': rnd.randint(500, 9000000),
+                             'in_bps': int(dn / 4 * random.uniform(.5, 1.5)) if busy else 0,
+                             'out_bps': int(up / 4 * random.uniform(.5, 1.5)) if busy else 0, 'age': rnd.randint(2, 90000)})
+        rows.sort(key=lambda r: (r['in_bps'] + r['out_bps'], r['bytes_in'] + r['bytes_out']), reverse=True)
+        return {'ok': True, 'ts': int(time.time()), 'cc': cc, 'total': len(rows), 'interval': 3.0, 'conns': rows[:300]}
 
     def tm_db(self):
         if os.environ.get('UNISENSE_HARNESS_NODB'):

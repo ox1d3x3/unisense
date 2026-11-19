@@ -535,9 +535,11 @@ div {
   height: 96px;
   border-radius: 8px;
   background: var(--us-surface-2);
+  overflow: hidden;
   cursor: crosshair;
 
-  > canvas { display: block; width: 100%; height: 100%; }
+  // drawn one step wider than the box and scrolled left (theme.js Meter)
+  > canvas { position: absolute; top: 0; left: 0; display: block; will-change: transform; }
 }
 .us-meter-hi,
 .us-meter-lo {
@@ -630,3 +632,51 @@ div {
     font-weight: 600 !important;
   }
 }
+
+// ---------------------------------------------------------------------------
+// CPU widget (theme.js cpuPanel): live figures over a taller graph
+// ---------------------------------------------------------------------------
+.us-cpu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 18px;
+  margin: 2px 0 10px;
+}
+.us-cpu-now {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  color: var(--us-heading);
+  line-height: 1;
+}
+.us-cpu-val { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.us-cpu-now small { color: var(--us-text-3); font-size: 15px; }
+.us-cpu.is-warn .us-cpu-val { color: var(--us-warn); }
+.us-cpu.is-crit .us-cpu-val { color: var(--us-crit); }
+.us-cpu-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.us-cpu-facts > span {
+  display: flex;
+  flex-direction: column;
+  color: var(--us-text-3);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+.us-cpu-facts > span[hidden] { display: none; }
+.us-cpu-facts b {
+  color: var(--us-heading);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.us-cpu-temp.is-warn b { color: var(--us-warn); }
+.us-cpu-temp.is-crit b { color: var(--us-crit); }
+// core draws each graph 50px tall: give the total graph real room
+#cpu-usage-total { height: 132px !important; }
+#cpu-usage-user,
+#cpu-usage-sys,
+#cpu-usage-intr { height: 72px !important; }

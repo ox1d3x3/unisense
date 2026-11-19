@@ -56,6 +56,19 @@ class TrafficmapController extends ApiControllerBase
     }
 
     /**
+     * the connections behind one country ("all" for every country)
+     * @param string $cc ISO country code, "all" or "unknown"
+     */
+    public function connsAction($cc = 'all')
+    {
+        $cc = strtolower((string)$cc) === 'unknown' ? '??' : strtoupper((string)$cc);
+        if (!preg_match('/^([A-Z]{2}|\?\?|ALL)$/', $cc)) {
+            return ['ok' => false, 'error' => 'invalid country'];
+        }
+        return $this->runJson('unisense trafficmap conns ' . escapeshellarg($cc), 60);
+    }
+
+    /**
      * every country seen since the history started (bytes, connections, last seen)
      */
     public function historyAction()

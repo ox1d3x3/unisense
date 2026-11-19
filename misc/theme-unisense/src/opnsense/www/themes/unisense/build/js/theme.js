@@ -397,6 +397,14 @@
         S.prototype.__unisense = true;
         S.prototype.addTimeSeries = function (ts, opts) {
             try {
+                /* the dashboard CPU widget: remember which series is which */
+                var m = this.canvas && /^cpu-usage-(total|user|sys|intr)$/.exec(this.canvas.id || '');
+                if (m && ts) {
+                    ts.__usCpu = m[1];
+                    cpuPanel(this.canvas);
+                }
+            } catch (e) { /* ignore */ }
+            try {
                 if (opts && typeof opts === 'object') {
                     ['strokeStyle', 'fillStyle'].forEach(function (k) {
                         if (typeof opts[k] === 'string') {
@@ -410,6 +418,120 @@
             } catch (e) { /* ignore */ }
             return orig.apply(this, arguments);
         };
+    }
+
+    /*
+     * CPU widget: a header over core's live graph with the current load in
+     * large type, user / system / interrupt, the CPU temperature and the
+     * one-minute average. Fed by the widget's own stream (TimeSeries.append),
+     * so nothing extra is polled except the temperature, every 15 s.
+     */
+    var cpu = null;
+
+    function cpuPanel(canvas) {
+        var box = canvas.closest('.cpu-canvas-container');
+        if (!box || (cpu && cpu.el.isConnected)) {
+            return;
+        }
+        var node = document.createElement('div');
+        node.className = 'us-cpu';
+        node.innerHTML = '<div class="us-cpu-now"><span class="us-cpu-val">&ndash;</span><small>%</small></div>' +
+            '<div class="us-cpu-facts">' +
+            '<span><b data-us-cpu="user">&ndash;</b>User</span>' +
+            '<span><b data-us-cpu="sys">&ndash;</b>System</span>' +
+            '<span><b data-us-cpu="intr">&ndash;</b>Interrupt</span>' +
+            '<span><b data-us-cpu="avg">&ndash;</b>1 min avg</span>' +
+            '<span class="us-cpu-temp" hidden><b data-us-cpu="temp">&ndash;</b>Temperature</span>' +
+            '</div>';
+        box.parentNode.insertBefore(node, box);
+        cpu = { el: node, last: {}, hist: [], shown: 0, tempAt: 0 };
+        patchTimeSeries();
+        cpuTemp();
+    }
+
+    function patchTimeSeries() {
+        var T = window.TimeSeries;
+        if (!T || !T.prototype || T.prototype.__unisense) {
+            return;
+        }
+        T.prototype.__unisense = true;
+        var append = T.prototype.append;
+        T.prototype.append = function (ts, value) {
+            var r = append.apply(this, arguments);
+            if (this.__usCpu && cpu) {
+                try {
+                    cpuFeed(this.__usCpu, +value);
+                } catch (e) { /* cosmetic only */ }
+            }
+            return r;
+        };
+    }
+
+    function cpuFeed(key, v) {
+        if (!isFinite(v)) {
+            return;
+        }
+        cpu.last[key] = v;
+        if (key === 'total') {
+            cpu.hist.push(v);
+            if (cpu.hist.length > 60) {
+                cpu.hist.shift();
+            }
+        }
+        var now = Date.now();
+        if (now - cpu.shown < 900 || key !== 'total') {
+            return;
+        }
+        cpu.shown = now;
+        var panel = cpu.el;
+        var set = function (sel, txt) {
+            var n = panel.querySelector(sel);
+            if (n && n.textContent !== txt) {
+                n.textContent = txt;
+            }
+        };
+        set('.us-cpu-val', String(Math.round(cpu.last.total)));
+        ['user', 'sys', 'intr'].forEach(function (k) {
+            if (cpu.last[k] !== undefined) {
+                set('[data-us-cpu="' + k + '"]', Math.round(cpu.last[k]) + '%');
+            }
+        });
+        var avg = cpu.hist.reduce(function (a, b) { return a + b; }, 0) / cpu.hist.length;
+        set('[data-us-cpu="avg"]', Math.round(avg) + '%');
+        panel.classList.toggle('is-warn', cpu.last.total >= 70 && cpu.last.total < 90);
+        panel.classList.toggle('is-crit', cpu.last.total >= 90);
+        if (now - cpu.tempAt > 15000) {
+            cpuTemp();
+        }
+    }
+
+    function cpuTemp() {
+        if (!cpu || document.hidden || !window.fetch) {
+            return;
+        }
+        cpu.tempAt = Date.now();
+        fetch('/api/diagnostics/system/system_temperature', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (list) {
+                if (!Array.isArray(list) || !list.length || !cpu) {
+                    return;
+                }
+                var cpus = list.filter(function (x) { return x && x.type === 'cpu'; });
+                var use = (cpus.length ? cpus : list).map(function (x) { return parseFloat(x.temperature); })
+                    .filter(function (t) { return isFinite(t) && t > 0; });
+                if (!use.length) {
+                    return;
+                }
+                var avg = use.reduce(function (a, b) { return a + b; }, 0) / use.length;
+                var max = Math.max.apply(null, use);
+                var wrap = cpu.el.querySelector('.us-cpu-temp');
+                wrap.hidden = false;
+                wrap.querySelector('b').textContent = Math.round(avg) + '°C';
+                wrap.title = 'Average ' + avg.toFixed(1) + '°C, hottest core ' + max.toFixed(1) + '°C';
+                wrap.classList.toggle('is-warn', max >= 70 && max < 80);
+                wrap.classList.toggle('is-crit', max >= 80);
+            })
+            .catch(function () { /* no sensors or no privilege: stays hidden */ });
     }
 
     function refreshCharts() {
@@ -608,24 +730,41 @@
         this.draw(0);
     };
 
-    /* a new point slides in from the right */
+    /*
+     * Continuous scroll, like the CPU graph: the canvas is drawn one step
+     * wider than the graph with the newest sample in that hidden step, then
+     * moved left by one step over one refresh interval (a linear, composited
+     * transform). When the next sample arrives the picture is redrawn one
+     * step on and the move starts again, so the motion never stops or jumps.
+     */
     Meter.prototype.slide = function () {
-        var self = this;
-        if (reducedMotion() || this.hist.length < 2) {
+        var c = this.canvas;
+        if (this.anim) {
+            this.anim.cancel();
+            this.anim = null;
+        }
+        var g = this.geometry();
+        if (reducedMotion() || typeof c.animate !== 'function' || this.hist.length < 2) {
+            c.style.transform = 'translate3d(' + (-g.stepX).toFixed(2) + 'px,0,0)';
             return;
         }
-        var t0 = performance.now();
-        cancelAnimationFrame(this.raf || 0);
-        var step = function (now) {
-            var k = Math.min(1, (now - t0) / 600);
-            self.offset = 1 - (1 - Math.pow(1 - k, 3));
-            self.draw(0);
-            self.raf = k < 1 ? requestAnimationFrame(step) : 0;
-        };
-        this.offset = 1;
-        this.raf = requestAnimationFrame(step);
+        c.style.transform = '';
+        var ms = Math.max(1000, (this.w.tickTimeout || 5) * 1000);
+        this.anim = c.animate([{ transform: 'translate3d(0,0,0)' }, { transform: 'translate3d(' + (-g.stepX).toFixed(2) + 'px,0,0)' }],
+            { duration: ms, easing: 'linear', fill: 'forwards' });
     };
 
+    /* how far the canvas has moved left right now */
+    Meter.prototype.shift = function () {
+        var a = this.anim;
+        if (!a || !a.effect) {
+            return this.geometry().stepX;
+        }
+        var t = a.effect.getComputedTiming();
+        return (t.progress === null ? 1 : t.progress) * this.geometry().stepX;
+    };
+
+    /* the vertical range moves only when it has to, so the graph does not jump */
     Meter.prototype.range = function () {
         var lo = 100, hi = 0;
         this.hist.forEach(function (h) {
@@ -648,15 +787,22 @@
             a = Math.max(0, b - 4);
         }
         var nice = b - a > 20 ? 5 : 1;
-        return [Math.floor(a / nice) * nice, Math.ceil(b / nice) * nice];
+        var want = [Math.floor(a / nice) * nice, Math.ceil(b / nice) * nice];
+        var cur = this.rng;
+        if (cur && lo >= cur[0] && hi <= cur[1] && (cur[1] - cur[0]) <= (want[1] - want[0]) * 2.5) {
+            return cur;
+        }
+        this.rng = want;
+        return want;
     };
 
     Meter.prototype.geometry = function () {
         var w = this.graph.clientWidth, h = this.graph.clientHeight;
         var n = this.hist.length;
-        /* until the history fills the graph, spread it over fewer slots */
-        var stepX = w / (Math.max(16, Math.min(METER_POINTS, n)) - 1);
-        return { w: w, h: h, n: n, stepX: stepX, x: function (i) { return w - (n - 1 - i) * stepX; } };
+        /* fixed spacing: the graph fills up from the right, like the CPU graph */
+        var stepX = w / (METER_POINTS - 1);
+        var W = w + stepX;
+        return { w: w, W: W, h: h, n: n, stepX: stepX, x: function (i) { return W - (n - 1 - i) * stepX; } };
     };
 
     Meter.prototype.draw = function () {
@@ -666,13 +812,15 @@
             return;
         }
         var dpr = Math.min(window.devicePixelRatio || 1, 2);
-        if (c.width !== Math.round(g.w * dpr) || c.height !== Math.round(g.h * dpr)) {
-            c.width = Math.round(g.w * dpr);
+        if (c.width !== Math.round(g.W * dpr) || c.height !== Math.round(g.h * dpr)) {
+            c.width = Math.round(g.W * dpr);
             c.height = Math.round(g.h * dpr);
+            c.style.width = g.W.toFixed(2) + 'px';
+            c.style.height = g.h + 'px';
         }
         var ctx = c.getContext('2d');
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, g.w, g.h);
+        ctx.clearRect(0, 0, g.W, g.h);
         var r = this.range();
         this.hiEl.textContent = r[1] + '%';
         this.loEl.textContent = r[0] + '%';
@@ -688,19 +836,17 @@
         for (var gl = 0; gl <= 3; gl++) {
             var gy = Math.round(top + (bottom - top) * gl / 3) + 0.5;
             ctx.moveTo(0, gy);
-            ctx.lineTo(g.w, gy);
+            ctx.lineTo(g.W, gy);
         }
         ctx.stroke();
         ctx.setLineDash([]);
         if (g.n < 1) {
             return;
         }
-        var shift = this.offset * g.stepX;
         var hist = this.hist;
         var colors = [resolveToken('--us-chart-1') || '#006fff', resolveToken('--us-chart-2') || '#38cc65'];
         var series = hist[g.n - 1].v.length;
         ctx.save();
-        ctx.translate(shift, 0);
         /* stacked areas, top series first so the lower one is drawn over it */
         for (var s = Math.min(series, 2) - 1; s >= 0; s--) {
             var pts = [];
@@ -763,7 +909,8 @@
             return;
         }
         var rect = this.graph.getBoundingClientRect();
-        var i = Math.round(g.n - 1 - (g.w - (clientX - rect.left)) / g.stepX);
+        var shift = this.shift();
+        var i = Math.round(g.n - 1 - (g.W - (clientX - rect.left + shift)) / g.stepX);
         if (i < 0 || i >= g.n) {
             this.hover = -1;
             this.tip.hidden = true;
@@ -780,7 +927,7 @@
                 return '<span><i class="us-s' + k + '"></i>' + escapeHtml(labels[k] || '') + ' ' + v.toFixed(2) + '%</span>';
             }).join('');
         this.tip.hidden = false;
-        var x = g.x(i);
+        var x = g.x(i) - shift;
         this.tip.style.left = Math.max(4, Math.min(g.w - this.tip.offsetWidth - 4, x - this.tip.offsetWidth / 2)) + 'px';
         this.draw(0);
     };

@@ -261,7 +261,9 @@
 .utm-sortable[aria-sort="ascending"] .utm-sort-ico,
 .utm-sortable[aria-sort="descending"] .utm-sort-ico { opacity: 1; font-style: normal; }
 .utm-sortable:focus-visible { outline: 2px solid var(--utm-accent); outline-offset: -2px; }
-[data-utm-stat="cc"] { cursor: pointer; }
+[data-utm-stat="cc"],
+[data-utm-stat="cn"] { cursor: pointer; }
+.utm-hist-row { cursor: pointer; }
 .utm-card-head small { color: var(--utm-text-3); font-size: 12.5px; }
 
 /* ------------------------------------------------------------------- map */
@@ -528,3 +530,38 @@
 }
 .utm-hist-note[hidden] { display: none; }
 .utm-hist-note .btn-link { padding: 0 0 0 6px; font-size: 12px; vertical-align: baseline; }
+
+/* -------------------------------------------------- connections panel */
+.utm-conns[hidden] { display: none; }
+.utm-conns { animation: utm-in .25s var(--utm-ease, ease) both; }
+@keyframes utm-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .utm-conns { animation: none; } }
+.utm-conns-head b { display: inline-flex; align-items: center; gap: 8px; }
+.utm-conns-close { margin-left: 8px; }
+.utm-conns-head .utm-search { margin-left: auto; }
+.utm-conns-wrap { max-height: 560px; overflow: auto; }
+.utm-conn-table thead th { position: sticky; top: 0; z-index: 1; background: var(--utm-surface); }
+.utm-conn-table td { vertical-align: middle; }
+.utm-conn-table small { display: block; color: var(--utm-text-3); font-size: 11.5px; }
+.utm-dev b { color: var(--utm-heading); font-weight: 600; white-space: nowrap; }
+.utm-addr {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--utm-surface-2);
+  color: var(--utm-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.utm-svc { color: var(--utm-heading); font-weight: 500; }
+.utm-org { display: block; max-width: 260px; overflow-wrap: anywhere; }
+.utm-conn.is-live .utm-dev b::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--utm-ok);
+  vertical-align: 2px;
+}
+.utm-conns-btn { margin-top: 10px; }

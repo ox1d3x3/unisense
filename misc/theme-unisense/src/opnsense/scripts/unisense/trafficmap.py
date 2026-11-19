@@ -58,6 +58,7 @@ ASN4 = struct.Struct('>IIII2s')          # start, end, asn, name offset, country
 ASN6 = struct.Struct('>16s16sII2s')
 
 TOP_ASNS = 5
+CONNS_MAX = 300             # connections listed per country
 
 
 # --------------------------------------------------------------- helpers
@@ -349,8 +350,8 @@ def is_remote(addr, own):
 
 def parse_states(text, own):
     """
-    -> {key: [down_bytes, up_bytes, remote_addr]} with one entry per
-       connection; down = towards us, up = towards the remote side.
+    -> {key: [down_bytes, up_bytes, remote_addr, age_seconds]} with one
+       entry per connection; down = towards us, up = towards the remote side.
     """
     conns = {}
     rec = None
@@ -387,9 +388,11 @@ def parse_states(text, own):
                 continue
             b0, b1 = int(m.group(1)), int(m.group(2))
             down, up = (b1, b0) if rec['up_first'] else (b0, b1)
+            a = re.search(r'age (\d+):(\d+):(\d+)', line)
+            age = int(a.group(1)) * 3600 + int(a.group(2)) * 60 + int(a.group(3)) if a else 0
             prev = conns.get(rec['key'])
             if prev is None or down + up > prev[0] + prev[1]:
-                conns[rec['key']] = [down, up, rec['remote']]
+                conns[rec['key']] = [down, up, rec['remote'], age]
             rec = None
     return conns
 
@@ -481,7 +484,7 @@ def snapshot():
 
     countries = {}
     totals = {'in_bps': 0.0, 'out_bps': 0.0, 'conns': 0, 'bytes_in': 0, 'bytes_out': 0}
-    for key, (down, up, remote) in conns.items():
+    for key, (down, up, remote, _age) in conns.items():
         cc, asn, org = look(remote) if look.ready else ('', 0, '')
         cc = cc or '??'
         c = countries.get(cc)
@@ -601,6 +604,67 @@ def cmd_flows():
     return 0
 
 
+SERVICES = {
+    20: 'FTP data', 21: 'FTP', 22: 'SSH', 25: 'SMTP', 53: 'DNS', 80: 'HTTP', 110: 'POP3', 123: 'NTP', 143: 'IMAP',
+    443: 'HTTPS', 465: 'SMTPS', 587: 'Mail submission', 853: 'DNS over TLS', 993: 'IMAPS', 995: 'POP3S',
+    1194: 'OpenVPN', 1883: 'MQTT', 3074: 'Xbox Live', 3478: 'STUN/TURN', 3479: 'STUN/TURN', 3480: 'STUN/TURN',
+    5222: 'XMPP', 5223: 'Apple push', 5228: 'Google push', 8080: 'HTTP alt', 8443: 'HTTPS alt', 8883: 'MQTT TLS',
+    9993: 'ZeroTier', 19302: 'Google STUN', 51820: 'WireGuard', 500: 'IPsec IKE', 4500: 'IPsec NAT-T',
+}
+
+
+def service_name(proto, port):
+    try:
+        p = int(port)
+    except ValueError:
+        return ''
+    if p in SERVICES:
+        return SERVICES[p]
+    if 27000 <= p <= 27100:
+        return 'Steam'
+    if 3478 <= p <= 3497:
+        return 'Game/voice (STUN)'
+    return ''
+
+
+def cmd_conns(cc):
+    """the connections behind one country (or 'all'): who, to where, how much"""
+    cc = (cc or '').upper()
+    if not re.match(r'^([A-Z]{2}|\?\?|ALL)$', cc):
+        print(json.dumps({'ok': False, 'error': 'invalid country'}))
+        return 0
+    now = time.time()
+    own = local_addresses()
+    conns = parse_states(read_states(), own)
+    look = Lookup()
+    prev = load_json(CACHE_FILE, {})
+    prev_c = prev.get('c', {})
+    dt = now - prev.get('ts', 0) if prev.get('ts') else 0
+    valid = 0.5 < dt < 120
+    rows = []
+    for key, (down, up, remote, age) in conns.items():
+        rcc, asn, org = look(remote) if look.ready else ('', 0, '')
+        rcc = rcc or '??'
+        if cc != 'ALL' and rcc != cc:
+            continue
+        proto, local, rem = key.split('|', 2)
+        laddr, lport = split_addr(local)
+        raddr, rport = split_addr(rem)
+        rin = rout = 0
+        p = prev_c.get(key)
+        if valid and p is not None and down >= p[0] and up >= p[1]:
+            rin = round((down - p[0]) * 8.0 / dt)
+            rout = round((up - p[1]) * 8.0 / dt)
+        rows.append({'proto': proto, 'local': laddr, 'lport': lport, 'remote': raddr, 'rport': rport,
+                     'service': service_name(proto, rport), 'cc': rcc, 'asn': asn, 'org': org,
+                     'bytes_in': down, 'bytes_out': up, 'in_bps': rin, 'out_bps': rout, 'age': age})
+    rows.sort(key=lambda r: (r['in_bps'] + r['out_bps'], r['bytes_in'] + r['bytes_out']), reverse=True)
+    out = {'ok': True, 'ts': int(now), 'cc': cc, 'total': len(rows), 'interval': round(dt, 2) if valid else 0,
+           'conns': rows[:CONNS_MAX]}
+    print(json.dumps(out, separators=(',', ':')))
+    return 0
+
+
 def cmd_sample():
     """cron, every minute: keep the history going while nobody has the page open"""
     with Locked():
@@ -678,7 +742,9 @@ if __name__ == '__main__':
         sys.exit(cmd_history())
     elif cmd == 'reset':
         sys.exit(cmd_reset())
+    elif cmd == 'conns':
+        sys.exit(cmd_conns(sys.argv[2] if len(sys.argv) > 2 else ''))
     elif cmd == 'status':
         sys.exit(cmd_status())
-    print('usage: trafficmap.py update [--force] | flows | sample | history | reset | status')
+    print('usage: trafficmap.py update [--force] | flows | conns CC | sample | history | reset | status')
     sys.exit(2)

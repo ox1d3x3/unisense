@@ -165,6 +165,12 @@
         hsort: { key: 'htot', dir: -1 },
         query: '',
         history: null,        /* every country seen (trafficmap.py history) */
+        connCc: null,         /* the connections panel: country shown, or null */
+        connData: null,
+        connAt: 0,
+        connQuery: '',
+        names: null,          /* local IP -> device name (ARP + Network Map names) */
+        namesAt: 0,
         histAt: 0,
         colors: null
     };
@@ -192,6 +198,7 @@
             '<span><i class="utm-key utm-key-ul"></i>' + esc(t('upload', 'Upload')) + '</span>' +
             '<span class="utm-legend-scale"><i class="utm-l1"></i><i class="utm-l2"></i><i class="utm-l3"></i><i class="utm-l4"></i><i class="utm-l5"></i></span>' +
             '</div></div>' +
+            '<div class="utm-card utm-conns" data-utm="conns" hidden></div>' +
             '<div class="utm-card">' +
             '<div class="utm-card-head">' +
             '<div class="utm-tabs" role="tablist">' +
@@ -1241,7 +1248,14 @@
                 if (!r.detail) {
                     r.detail = document.createElement('tr');
                     r.detail.className = 'utm-detail';
-                    r.detail.innerHTML = '<td></td><td colspan="7"><div class="utm-nets"></div></td>';
+                    r.detail.innerHTML = '<td></td><td colspan="7"><div class="utm-nets"></div>' +
+                        '<button type="button" class="btn btn-default btn-sm utm-conns-btn" data-utm-conns="' + esc(c.cc) + '">' +
+                        '<i class="fa fa-arrow-right-arrow-left" aria-hidden="true"></i> <span></span></button></td>';
+                }
+                var cb = r.detail.querySelector('.utm-conns-btn span');
+                var ctext = t('showConns', 'Show the connections') + ' (' + c.conns + ')';
+                if (cb.textContent !== ctext) {
+                    cb.textContent = ctext;
                 }
                 setHtml(r.detail.querySelector('.utm-nets'), (c.asns || []).filter(function (a) { return a.asn; }).map(function (a) {
                     return '<div class="utm-net"><b>' + esc(a.name || 'Unknown network') + '</b>' +
@@ -1401,6 +1415,179 @@
         });
     }
 
+    /* ------------------------------------------------------- connections */
+    function fmtAge(sec) {
+        sec = +sec || 0;
+        if (sec < 60) {
+            return sec + 's';
+        }
+        if (sec < 3600) {
+            return Math.floor(sec / 60) + 'm';
+        }
+        if (sec < 86400) {
+            return Math.floor(sec / 3600) + 'h ' + Math.floor(sec % 3600 / 60) + 'm';
+        }
+        return Math.floor(sec / 86400) + 'd ' + Math.floor(sec % 86400 / 3600) + 'h';
+    }
+
+    /* device names for local addresses: Network Map names, then hostnames */
+    function loadNames() {
+        if (S.names && Date.now() - S.namesAt < 60000) {
+            return Promise.resolve();
+        }
+        S.namesAt = Date.now();
+        return Promise.all([
+            fetchJson('/api/diagnostics/interface/get_arp', 20000),
+            fetchJson('/api/unisense/networkmap/search_device')
+        ]).then(function (r) {
+            var labels = {};
+            ((r[1] && r[1].rows) || []).forEach(function (l) {
+                if (l && l.mac && l.name) {
+                    labels[String(l.mac).toLowerCase()] = l.name;
+                }
+            });
+            var names = {};
+            (Array.isArray(r[0]) ? r[0] : ((r[0] && r[0].rows) || [])).forEach(function (a) {
+                if (!a || !a.ip) {
+                    return;
+                }
+                var name = labels[String(a.mac || '').toLowerCase()] || a.hostname || a.manufacturer || '';
+                if (name && name !== '?') {
+                    names[a.ip] = name;
+                }
+            });
+            S.names = names;
+            if (S.connCc) {
+                renderConns();
+            }
+        });
+    }
+
+    function openConns(cc) {
+        S.connCc = cc;
+        S.connData = null;
+        S.connQuery = '';
+        renderConns();
+        q('conns').querySelector('[data-utm="conns-search"]').value = '';
+        loadNames();
+        loadConns();
+        var el = q('conns');
+        el.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    }
+
+    function closeConns() {
+        S.connCc = null;
+        S.connData = null;
+        q('conns').hidden = true;
+    }
+
+    function loadConns() {
+        var cc = S.connCc;
+        if (!cc) {
+            return;
+        }
+        S.connAt = Date.now();
+        fetchJson('/api/unisense/trafficmap/conns/' + encodeURIComponent(cc === '??' ? 'unknown' : cc), 60000).then(function (d) {
+            if (S.connCc !== cc) {
+                return;
+            }
+            S.connData = d && d.ok ? d : { ok: false };
+            renderConns();
+        });
+    }
+
+    function renderConns() {
+        var el = q('conns');
+        var cc = S.connCc;
+        if (!cc) {
+            el.hidden = true;
+            return;
+        }
+        el.hidden = false;
+        if (!el.__utmBuilt) {
+            el.__utmBuilt = true;
+            el.innerHTML = '<div class="utm-card-head utm-conns-head"><b data-utm="conns-title"></b><small data-utm="conns-sub"></small>' +
+                '<label class="utm-search"><i class="fa fa-search" aria-hidden="true"></i>' +
+                '<input type="search" data-utm="conns-search" placeholder="' + esc(t('connSearch', 'Filter by device, address, service or network')) + '" ' +
+                'aria-label="' + esc(t('connSearch', 'Filter connections')) + '"></label>' +
+                '<button type="button" class="btn btn-default btn-sm utm-conns-close" data-utm-action="close-conns" aria-label="' +
+                esc(t('close', 'Close')) + '"><i class="fa fa-times" aria-hidden="true"></i></button></div>' +
+                '<div class="utm-table-wrap utm-conns-wrap" data-utm="conns-body"></div>';
+            var input = el.querySelector('[data-utm="conns-search"]');
+            var timer = 0;
+            input.addEventListener('input', function () {
+                clearTimeout(timer);
+                timer = setTimeout(function () {
+                    S.connQuery = input.value.trim().toLowerCase();
+                    renderConns();
+                }, 120);
+            });
+        }
+        var all = cc === 'ALL';
+        setHtml(q('conns-title'), (all ? '' : flag(cc) + ' ') + esc(all ? t('allConns', 'All connections') : countryName(cc)));
+        var d = S.connData;
+        var body = q('conns-body');
+        if (!d) {
+            setHtml(q('conns-sub'), '');
+            setHtml(body, '<div class="utm-empty">' + esc(t('loading', 'Loading…')) + '</div>');
+            return;
+        }
+        if (!d.ok) {
+            setHtml(q('conns-sub'), '');
+            setHtml(body, '<div class="utm-empty">' + esc(t('connError', 'Could not read the connections.')) + '</div>');
+            return;
+        }
+        var names = S.names || {};
+        var qy = S.connQuery;
+        var rows = d.conns.filter(function (c) {
+            if (!qy) {
+                return true;
+            }
+            var hay = [names[c.local] || '', c.local, c.remote, c.rport, c.service, c.org, c.proto, 'as' + c.asn, countryName(c.cc)].join(' ').toLowerCase();
+            return qy.split(/\s+/).every(function (w) { return hay.indexOf(w) !== -1; });
+        });
+        /* who: how many devices, the busiest of them */
+        var devs = {};
+        d.conns.forEach(function (c) {
+            devs[c.local] = (devs[c.local] || 0) + c.bytes_in + c.bytes_out;
+        });
+        var ndev = Object.keys(devs).length;
+        setHtml(q('conns-sub'), esc(d.total + ' ' + t('connections', 'Connections').toLowerCase() + ' · ' + ndev + ' ' +
+            (ndev === 1 ? t('device', 'device') : t('devices', 'devices')) +
+            (d.total > d.conns.length ? ' · ' + t('busiest', 'busiest') + ' ' + d.conns.length + ' ' + t('shown', 'shown') : '')));
+        if (!rows.length) {
+            setHtml(body, '<div class="utm-empty">' + esc(qy ? t('noMatchConn', 'No connection matches.') : t('noConns', 'No open connections to this country right now.')) + '</div>');
+            return;
+        }
+        var html = '<table class="utm-table utm-conn-table"><thead><tr>' +
+            '<th>' + esc(t('device', 'Device')) + '</th>' +
+            (all ? '<th>' + esc(t('country', 'Country')) + '</th>' : '') +
+            '<th>' + esc(t('remote', 'Remote address')) + '</th>' +
+            '<th>' + esc(t('service', 'Service')) + '</th>' +
+            '<th class="utm-c-hide">' + esc(t('network', 'Network')) + '</th>' +
+            '<th class="utm-c-num">' + esc(t('now', 'Now')) + '</th>' +
+            '<th class="utm-c-num">' + esc(t('transferred', 'Transferred')) + '</th>' +
+            '<th class="utm-c-num utm-c-hide">' + esc(t('age', 'Open for')) + '</th>' +
+            '</tr></thead><tbody>';
+        rows.forEach(function (c) {
+            var name = names[c.local];
+            var rate = c.in_bps + c.out_bps;
+            var v6 = c.remote.indexOf(':') !== -1;
+            html += '<tr class="utm-conn' + (rate > 0 ? ' is-live' : '') + '">' +
+                '<td><span class="utm-dev"><b>' + esc(name || c.local) + '</b>' + (name ? '<small>' + esc(c.local) + '</small>' : '') + '</span></td>' +
+                (all ? '<td><span class="utm-c-country">' + flag(c.cc) + '<span>' + esc(countryName(c.cc)) + '</span></span></td>' : '') +
+                '<td><code class="utm-addr">' + esc(v6 ? '[' + c.remote + ']' : c.remote) + (c.rport ? ':' + esc(c.rport) : '') + '</code></td>' +
+                '<td><span class="utm-svc">' + esc(c.service || (c.proto.toUpperCase() + (c.rport ? ' ' + c.rport : ''))) + '</span>' +
+                (c.service ? '<small>' + esc(c.proto.toUpperCase()) + '</small>' : '') + '</td>' +
+                '<td class="utm-c-hide"><span class="utm-org">' + esc(c.org || t('unknownNet', 'Unknown network')) + '</span>' +
+                (c.asn ? '<small>AS' + esc(c.asn) + '</small>' : '') + '</td>' +
+                '<td class="utm-c-num">' + (rate > 0 ? '<span class="utm-dl">&darr; ' + esc(fmtBits(c.in_bps)) + '</span><br><span class="utm-ul">&uarr; ' + esc(fmtBits(c.out_bps)) + '</span>' : '<span class="utm-muted">&mdash;</span>') + '</td>' +
+                '<td class="utm-c-num"><span class="utm-dl">&darr; ' + esc(fmtBytes(c.bytes_in)) + '</span><br><span class="utm-ul">&uarr; ' + esc(fmtBytes(c.bytes_out)) + '</span></td>' +
+                '<td class="utm-c-num utm-c-hide">' + esc(fmtAge(c.age)) + '</td></tr>';
+        });
+        setHtml(body, html + '</tbody></table>');
+    }
+
     function setView(v) {
         S.view = v;
         root.querySelectorAll('[data-utm-view]').forEach(function (b) {
@@ -1419,6 +1606,20 @@
         var tab = e.target.closest && e.target.closest('[data-utm-view]');
         if (tab) {
             setView(tab.getAttribute('data-utm-view'));
+            return;
+        }
+        var cb = e.target.closest && e.target.closest('[data-utm-conns]');
+        if (cb) {
+            openConns(cb.getAttribute('data-utm-conns'));
+            return;
+        }
+        if (e.target.closest && e.target.closest('[data-utm-stat="cn"]')) {
+            openConns('ALL');
+            return;
+        }
+        var hrow = e.target.closest && e.target.closest('.utm-hist-row');
+        if (hrow) {
+            openConns(hrow.getAttribute('data-cc'));
             return;
         }
         var stat = e.target.closest && e.target.closest('[data-utm-stat="cc"]');
@@ -1445,6 +1646,8 @@
             var act = btn.getAttribute('data-utm-action');
             if (act === 'update') {
                 startUpdate();
+            } else if (act === 'close-conns') {
+                closeConns();
             } else if (act === 'reset') {
                 if (!S.resetArmed) {
                     S.resetArmed = true;
@@ -1567,6 +1770,9 @@
                 S.failed = true;
             }
             renderAll();
+            if (S.connCc && Date.now() - S.connAt > 2500) {
+                loadConns();
+            }
             if (S.view === 'all' ? Date.now() - S.histAt > 15000 : !S.histAt) {
                 loadHistory();
             }

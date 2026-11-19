@@ -244,19 +244,27 @@
   overflow: visible;
   will-change: transform;         /* own layer: a moving link repaints alone */
 }
-.usn-link path { fill: none; stroke-linecap: round; }
-.usn-link-base { stroke: var(--usn-line); stroke-width: 2; }
-.usn-link.is-busy .usn-link-base { stroke: color-mix(in srgb, var(--usn-accent) 22%, var(--usn-line)); }
-/* the "string": round dots 10px apart riding the line */
+.usn-link path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.usn-link-base { stroke: var(--usn-line); stroke-width: 2; transition: opacity .35s linear; }
+/* a busy link turns into a soft "cable" carrying two lanes */
+.usn-link-track {
+  stroke: var(--usn-accent);
+  stroke-width: 11;
+  opacity: 0;
+  transition: opacity .35s linear;
+}
+.usn-link.is-busy .usn-link-track { opacity: .08; }
+.usn-link.is-busy .usn-link-base { opacity: 0; }
+/* the two strings: download (accent, long streaks) runs towards the devices,
+   upload (green, short dashes) runs back; one period = 30px (DOT_GAP) */
 .usn-link-flow {
-  stroke-width: 3.2;
-  stroke-dasharray: 0 10;
+  stroke-width: 2.4;
   opacity: 0;
   transition: opacity .35s linear;
 }
 .usn-link-flow.is-on { opacity: 1; }
-.usn-link-dl { stroke: var(--usn-accent); }
-.usn-link-ul { stroke: var(--usn-ok); stroke-dashoffset: 5; }
+.usn-link-dl { stroke: var(--usn-accent); stroke-dasharray: 14 16; }
+.usn-link-ul { stroke: var(--usn-ok); stroke-dasharray: 6 24; stroke-dashoffset: 9; }
 
 /* -------------------------------------------------------------- networks */
 .usn-rows {

@@ -242,6 +242,18 @@ def main():
     r3 = json.loads(run(['flows'], env).stdout)
     t('counter reset gives no negative rate', all(x['in_bps'] >= 0 and x['out_bps'] >= 0 for x in r3['countries']))
 
+    print('connections of a country')
+    sfile.write_text(states(1))
+    cv = json.loads(run(['conns', 'US'], env).stdout)
+    t('lists the connections of that country only', cv['ok'] and cv['total'] == 3 and all(c['cc'] == 'US' for c in cv['conns']), cv)
+    g = next((c for c in cv['conns'] if c['remote'] == '8.8.8.8' and c['proto'] == 'tcp'), {})
+    t('who, to where and how much', g.get('local') == '10.10.0.20' and g.get('rport') == '443' and g.get('service') == 'HTTPS'
+      and g.get('org') == 'GOOGLE' and g.get('bytes_in') == 50000 and g.get('age') == 31, g)
+    allc = json.loads(run(['conns', 'all'], env).stdout)
+    t('"all" lists every connection', allc['total'] == 6, allc.get('total'))
+    bad = json.loads(run(['conns', 'x; rm -rf /'], env).stdout)
+    t('invalid country refused', bad['ok'] is False, bad)
+
     print('history (all countries ever seen)')
     hist = work / 'hist.json'
     henv = dict(env, UNISENSE_FLOW_CACHE=str(work / 'cache-h.json'), UNISENSE_HISTORY=str(hist),

@@ -39,9 +39,11 @@ MARK = '''<defs>
     <rect width="48" height="48" rx="13" fill="url(#us-bg)"/>
     <rect width="48" height="48" rx="13" fill="url(#us-glow)"/>
     <rect x=".75" y=".75" width="46.5" height="46.5" rx="12.25" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="1.5"/>
-    <path d="M13 12v12a11 11 0 0 0 22 0V12" fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round"/>
-    <circle cx="24" cy="24.5" r="3.4" fill="#fff"/>
-    <path d="M18.6 19.2a7.6 7.6 0 0 1 10.8 0" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M24 23 13.5 13M24 23 34.5 13" stroke="#fff" stroke-opacity=".45" stroke-width="1.6"/>
+    <path d="M13.5 13v10.5a10.5 10.5 0 0 0 21 0V13" fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round"/>
+    <circle cx="13.5" cy="13" r="3.3" fill="#fff"/>
+    <circle cx="34.5" cy="13" r="3.3" fill="#fff"/>
+    <circle cx="24" cy="23" r="2.6" fill="#fff" fill-opacity=".9"/>
   </g>'''
 
 

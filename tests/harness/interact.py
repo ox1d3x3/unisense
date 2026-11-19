@@ -180,11 +180,13 @@ def main():
                      cardsLeft: rows.every(x => x.card.right < x.lane.left),
                      cardsCol: new Set(rows.map(x => Math.round(x.card.left))).size === 1,
                      rows: rows.length, links: links.length,
-                     curves: links.filter(l => /C/.test(l.querySelector('path').getAttribute('d'))).length };
+                     curves: links.filter(l => (l.querySelector('path').getAttribute('d').match(/L/g) || []).length > 10).length,
+                     lanes: links.every(l => l.querySelectorAll('.usn-link-dl, .usn-link-ul').length === 2) };
         })()""")
         check(geo['coreLeft'] and geo['inetAbove'], 'Internet above the firewall, in the left column')
         check(geo['cardsCol'] and geo['cardsLeft'], 'one column of network cards, each with its devices to the right')
         check(geo['links'] == 1 + 2 * geo['rows'] and geo['curves'] == geo['rows'], f"connectors: Internet-firewall, a curve to each network, a line to each lane ({geo['links']})")
+        check(geo['lanes'], 'every connector has a download and an upload lane')
         pg.uncheck('[data-usn="live"]'); pg.wait_for_timeout(200)
         lanes = pg.evaluate("[...document.querySelectorAll('.usn-link-flow')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
         check(lanes == 0 and pg.locator('.usn-link-flow.is-on').count() == 0, 'data flow stops with live traffic off')
@@ -255,6 +257,23 @@ def main():
         pg.wait_for_timeout(3500)
         check(pg.evaluate("document.querySelector('.utm-row[data-cc=\"US\"]') === window.__usRow"), 'table rows are updated in place, not rebuilt')
         check(pg.evaluate("!!document.querySelector('.utm-spark path.utm-spark-line').getAttribute('d')"), 'live throughput sparklines')
+        # the connections behind a country
+        pg.click('.utm-row[data-cc="US"]'); pg.wait_for_selector('.utm-conns-btn', timeout=4000)
+        pg.click('.utm-conns-btn'); pg.wait_for_selector('.utm-conn', timeout=8000)
+        check(pg.is_visible('[data-utm="conns"]') and 'United States' in pg.inner_text('[data-utm="conns-title"]'), 'a country opens its connections')
+        pg.wait_for_function("document.querySelector('[data-utm=\"conns-body\"]').innerText.includes('mahabubs-macbook')", timeout=8000)
+        check(True, 'connections show device names, not just addresses')
+        n_c = pg.locator('.utm-conn').count()
+        pg.fill('[data-utm="conns-search"]', 'NTP'); pg.wait_for_timeout(300)
+        n_f = pg.locator('.utm-conn').count()
+        check(0 < n_f < n_c, f'connections can be filtered ({n_c} -> {n_f})')
+        pg.click('[data-utm-action="close-conns"]')
+        check(pg.is_hidden('[data-utm="conns"]'), 'connections panel closes')
+        pg.click('[data-utm-stat="cn"]'); pg.wait_for_selector('.utm-conn', timeout=8000)
+        check('All connections' in pg.inner_text('[data-utm="conns-title"]') and pg.locator('.utm-conn-table th', has_text='Country').count() == 1,
+              'the Connections card lists every connection, with their countries')
+        pg.click('[data-utm-action="close-conns"]'); pg.click('.utm-row[data-cc="US"]')
+
         # every country ever seen: the history behind the "All countries" tab
         pg.click('[data-utm-view="all"]')
         pg.wait_for_selector('.utm-hist-row', timeout=8000)

@@ -718,7 +718,8 @@
      * API; the traffic rate sets the speed through updatePlaybackRate(), so a
      * speed change never makes the string jump. Idle links stay a plain line.
      */
-    var DOT_GAP = 10;          /* px from dot to dot along a link */
+    var DOT_GAP = 30;          /* px from streak to streak along a lane (dash + gap in the CSS) */
+    var LANE = 2.6;            /* px from the centre line to each lane */
 
     function flowSpeed(bps) {
         if (!(bps > 8000)) {
@@ -778,6 +779,18 @@
         });
     }
 
+    /* a polyline shifted sideways by off px (left of the direction of travel) */
+    function poly(pts, off) {
+        var out = [];
+        for (var i = 0; i < pts.length; i++) {
+            var a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+            var dx = b[0] - a[0], dy = b[1] - a[1];
+            var len = Math.sqrt(dx * dx + dy * dy) || 1;
+            out.push((i ? 'L' : 'M') + (pts[i][0] - dy / len * off).toFixed(1) + ' ' + (pts[i][1] + dx / len * off).toFixed(1));
+        }
+        return out.join('');
+    }
+
     /* draw the connectors from where the cards actually are */
     function layoutLinks() {
         var board = root.querySelector('[data-usn-board]');
@@ -821,18 +834,30 @@
             return;
         }
         layer.__usnSig = sig;
-        var pad = 6;
+        var pad = 9;
         layer.innerHTML = links.map(function (k) {
             var x1 = k[1], y1 = k[2], x2 = k[3], y2 = k[4];
             var left = Math.min(x1, x2) - pad, top = Math.min(y1, y2) - pad;
             var w = Math.max(1, Math.abs(x2 - x1)) + pad * 2, h = Math.max(1, Math.abs(y2 - y1)) + pad * 2;
             var ax = x1 - left, ay = y1 - top, bx = x2 - left, by = y2 - top;
-            var d = k[5] ? 'M' + ax + ' ' + ay + 'C' + (ax + (bx - ax) * 0.55) + ' ' + ay + ' ' + (bx - (bx - ax) * 0.55) + ' ' + by + ' ' + bx + ' ' + by :
-                'M' + ax + ' ' + ay + 'L' + bx + ' ' + by;
+            /* the centre line, sampled (curves) so the two lanes can run parallel to it */
+            var pts = [];
+            if (k[5]) {
+                var c1x = ax + (bx - ax) * 0.55, c2x = bx - (bx - ax) * 0.55;
+                for (var si = 0; si <= 40; si++) {
+                    var u = si / 40, v = 1 - u;
+                    pts.push([v * v * v * ax + 3 * v * v * u * c1x + 3 * v * u * u * c2x + u * u * u * bx,
+                        v * v * v * ay + 3 * v * v * u * ay + 3 * v * u * u * by + u * u * u * by]);
+                }
+            } else {
+                pts = [[ax, ay], [bx, by]];
+            }
+            var d = poly(pts, 0);
             return '<svg class="usn-link" data-usn-wire="' + esc(k[0]) + '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) +
                 '" viewBox="0 0 ' + w.toFixed(1) + ' ' + h.toFixed(1) + '" style="left:' + left.toFixed(1) + 'px;top:' + top.toFixed(1) + 'px">' +
-                '<path class="usn-link-base" d="' + d + '"/><path class="usn-link-flow usn-link-dl" d="' + d + '"/>' +
-                '<path class="usn-link-flow usn-link-ul" d="' + d + '"/></svg>';
+                '<path class="usn-link-track" d="' + d + '"/><path class="usn-link-base" d="' + d + '"/>' +
+                '<path class="usn-link-flow usn-link-dl" d="' + poly(pts, LANE) + '"/>' +
+                '<path class="usn-link-flow usn-link-ul" d="' + poly(pts, -LANE) + '"/></svg>';
         }).join('');
         updateRates();
     }
