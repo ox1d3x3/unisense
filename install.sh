@@ -42,7 +42,9 @@ GH_API="${UNISENSE_GH_API:-https://api.github.com/repos/${REPO}}"
 SETTHEME="${BASE}/scripts/unisense/settheme.php"
 SETUPCRON="${BASE}/scripts/unisense/setup_cron.php"
 TRAFFICMAP="${BASE}/scripts/unisense/trafficmap.py"
+HEAL="${BASE}/scripts/unisense/heal.sh"
 DB_DIR="${PREFIX}/var/db/unisense"
+SYSHOOK_DIR="${PREFIX}/usr/local/etc/rc.syshook.d"
 CONFIGCTL="${UNISENSE_CONFIGCTL:-/usr/local/sbin/configctl}"
 SERVICE="${UNISENSE_SERVICE:-/usr/sbin/service}"
 MIGRATE="${BASE}/mvc/script/run_migrations.php"
@@ -186,6 +188,27 @@ backend_on() {
 	fi
 }
 
+keep_copy() {
+	# a copy of this release for scripts/unisense/heal.sh, which runs after
+	# every firmware update and at boot and puts back anything missing
+	mkdir -p "${DB_DIR}/keep"
+	if tar -czf "${DB_DIR}/keep/unisense.tar.gz.new" -C "$SRC" . 2>/dev/null; then
+		mv -f "${DB_DIR}/keep/unisense.tar.gz.new" "${DB_DIR}/keep/unisense.tar.gz"
+		cp "${THEME_DIR}/.files" "${DB_DIR}/keep/files"
+	else
+		rm -f "${DB_DIR}/keep/unisense.tar.gz.new"
+		warn "could not keep a repair copy in ${DB_DIR}/keep"
+	fi
+	[ -f "$HEAL" ] && chmod 755 "$HEAL"
+	for lvl in update start; do
+		d="${SYSHOOK_DIR}/$lvl"
+		mkdir -p "$d"
+		printf '#!/bin/sh\n# UniSense: check the theme files after firmware updates and at boot\n[ -x %s ] && exec %s\nexit 0\n' \
+			"/usr/local/opnsense/scripts/unisense/heal.sh" "/usr/local/opnsense/scripts/unisense/heal.sh" > "$d/50-unisense"
+		chmod 755 "$d/50-unisense"
+	done
+}
+
 backend_off() {
 	if [ -x "$PHP" ] && [ -f "$SETUPCRON" ]; then
 		"$PHP" "$SETUPCRON" remove >/dev/null 2>&1 && [ -x "$CONFIGCTL" ] && "$CONFIGCTL" cron restart >/dev/null 2>&1
@@ -261,7 +284,8 @@ validate_tree() {
 	    mvc/app/models/OPNsense/Unisense/NetworkMap.xml mvc/app/views/OPNsense/Unisense/networkmap.volt \
 	    scripts/unisense/settheme.php scripts/unisense/setup_cron.php scripts/unisense/trafficmap.py \
 	    service/conf/actions.d/actions_unisense.conf www/js/unisense/trafficmap.js www/js/unisense/worldmap.json \
-	    www/css/unisense/trafficmap.css www/css/unisense/flags/US.svg mvc/app/views/OPNsense/Unisense/trafficmap.volt; do
+	    www/css/unisense/trafficmap.css www/css/unisense/flags/US.svg mvc/app/views/OPNsense/Unisense/trafficmap.volt \
+	    scripts/unisense/heal.sh; do
 		[ -s "$1/$f" ] || die "the download is incomplete ($f is missing)"
 	done
 }
@@ -337,6 +361,9 @@ do_status() {
 	else
 		say "  Network Map:  not installed"
 	fi
+	if [ -f "${SYSHOOK_DIR}/update/50-unisense" ] && [ -f "${DB_DIR}/keep/unisense.tar.gz" ]; then
+		say "  Self-repair:  after firmware updates and at boot"
+	fi
 }
 
 do_install() {
@@ -354,7 +381,7 @@ do_install() {
 	# 2. everything else (Network Map page, API, model, menu, helper script)
 	list="${THEME_DIR}.new/.files"
 	: > "$list"
-	(cd "$SRC" && find . -type f ! -path './www/themes/*' | sed 's:^\./::' | sort) > "$TMP/files"
+	(cd "$SRC" && find . -type f ! -path './www/themes/*' ! -path '*/__pycache__/*' ! -name '*.pyc' | sed 's:^\./::' | sort) > "$TMP/files"
 	while IFS= read -r f; do
 		mkdir -p "$(dirname "${BASE}/$f")"
 		cp "$SRC/$f" "${BASE}/$f.unisense-new"
@@ -396,6 +423,7 @@ do_install() {
 	fi
 	refresh_gui
 	backend_on
+	keep_copy
 
 	if [ -z "$old" ]; then
 		ok "UniSense $new installed"
@@ -435,6 +463,7 @@ do_uninstall() {
 	fi
 
 	backend_off
+	rm -f "${SYSHOOK_DIR}/update/50-unisense" "${SYSHOOK_DIR}/start/50-unisense"
 	if [ -f "$MANIFEST" ]; then
 		while IFS= read -r f; do
 			case "$f" in ''|*..*|/*) continue ;; esac

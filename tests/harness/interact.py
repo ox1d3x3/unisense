@@ -63,6 +63,14 @@ def main():
         check(pg.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--us-accent').trim()") == '#7b5cff', 'accent applied')
         after = pg.evaluate("JSON.stringify(Object.values(Chart.instances).map(c => c.data.datasets.map(d => d.backgroundColor)))")
         check('123, 92, 255' in after and before != after, 'gauge charts follow the accent colour')
+        pg.wait_for_function("document.querySelector('.us-cpu-val') && /^\\d+$/.test(document.querySelector('.us-cpu-val').textContent)", timeout=8000)
+        cpu = pg.evaluate("""(() => { const q = s => document.querySelector(s);
+            return { user: q('[data-us-cpu="user"]').textContent, temp: q('[data-us-cpu="temp"]').textContent,
+                     h: q('#cpu-usage-total').getBoundingClientRect().height }; })()""")
+        check(cpu['user'].endswith('%') and cpu['temp'].endswith('°C') and cpu['h'] >= 120, f'CPU widget: load, breakdown, temperature, taller graph ({cpu})')
+        pg.wait_for_timeout(6000)
+        scroll = pg.evaluate("[...document.querySelectorAll('.us-meter canvas')].map(c => c.getAnimations().map(a => a.playState + ':' + a.effect.getTiming().easing).join())")
+        check(any('running:linear' in x for x in scroll), f'meters scroll continuously ({scroll})')
         pg.screenshot(path=str(out / 'interact-dashboard-purple-dark.png'))
         pg.keyboard.press('Escape')
         check(not pg.is_visible('.us-appearance-menu'), 'Escape closes the menu')

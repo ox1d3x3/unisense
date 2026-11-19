@@ -30,7 +30,7 @@ jobs:
       - name: Lint shell scripts
         run: |
           sudo apt-get install -y shellcheck >/dev/null
-          shellcheck -s sh install.sh scripts/package.sh scripts/check-plugin.sh tests/test-install.sh tests/test-real-php.sh
+          shellcheck -s sh install.sh scripts/package.sh scripts/check-plugin.sh tests/test-install.sh tests/test-real-php.sh misc/theme-unisense/src/opnsense/scripts/unisense/heal.sh
       - name: Installer tests
         run: sh tests/test-install.sh
       - name: Traffic Map backend (databases, pf states, rates)

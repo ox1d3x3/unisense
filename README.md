@@ -6,14 +6,16 @@
 
 **A clean, controller-style theme for the OPNsense web GUI.**
 
-Dark navigation rail · card layout · quiet tables · light, dark and auto modes · six accent colours · **Network Map** · zero external requests.
+Dark navigation rail · card layout · live dashboard meters · light, dark and auto modes · six accent colours · **Network Map** · **Traffic Map** · no external requests from the GUI.
 
-[![CI](https://github.com/ox1d3x3/unisense/actions/workflows/ci.yml/badge.svg)](https://github.com/ox1d3x3/unisense/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ox1d3x3/unisense?color=006fff)](https://github.com/ox1d3x3/unisense/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/ox1d3x3/unisense/total?color=006fff&label=downloads)](https://github.com/ox1d3x3/unisense/releases)
+[![Stars](https://img.shields.io/github/stars/ox1d3x3/unisense?color=006fff)](https://github.com/ox1d3x3/unisense/stargazers)
+[![CI](https://github.com/ox1d3x3/unisense/actions/workflows/ci.yml/badge.svg)](https://github.com/ox1d3x3/unisense/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/ox1d3x3/unisense?color=blue)](./LICENSE)
 ![OPNsense](https://img.shields.io/badge/OPNsense-25.7%20%7C%2026.1%20%7C%2026.7-d94f00)
 
-[Screenshots](#screenshots) · [Install](#installation) · [Network Map](#network-map) · [Use](#using-the-theme) · [FAQ](#faq) · [Build](#building-from-source) · [Releases](https://github.com/ox1d3x3/unisense/releases/latest)
+[Screenshots](#screenshots) · [Install](#installation) · [Network Map](#network-map) · [Traffic Map](#traffic-map) · [Use](#using-the-theme) · [FAQ](#faq) · [Build](#building-from-source) · [Releases](https://github.com/ox1d3x3/unisense/releases/latest)
 
 <br>
 
@@ -29,7 +31,9 @@ On the firewall, as root (console **option 8 – Shell**, or SSH), paste one lin
 fetch -o - https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh | sh
 ```
 
-That's it: the theme and the Network Map page are installed and the GUI switches to UniSense. Reload the browser tab (Ctrl+F5). Run the same line again any time to update.
+That's it: the theme, the Network Map and the Traffic Map are installed and the GUI switches to UniSense. Reload the browser tab (Ctrl+F5). Run the same line again any time to update.
+
+UniSense survives OPNsense firmware updates: it checks itself after every update and at boot, and puts back anything that went missing (see the [FAQ](#faq)).
 
 ---
 
@@ -109,7 +113,7 @@ That's it: the theme and the Network Map page are installed and the GUI switches
 - Live per-device download/upload rates, network totals, search, per-network filters, hide offline devices
 - Click a device to give it a name and an icon — stored in the OPNsense configuration, so every browser and admin sees it (and it is included in backups)
 - Icons are guessed automatically (phones, laptops, TVs, consoles, cameras, NAS, access points, smart-home…)
-- Live data flow: a dotted "string" runs along every connector — download dots towards the devices, upload dots back — at a speed that follows the traffic; idle links stay a plain line
+- Live data flow: a busy connector becomes a soft cable with two lanes — download (blue streaks) towards the devices, upload (green dashes) back — at a speed that follows the traffic; idle links stay a plain line
 - A live dot right after each device's name, which ripples while the device is busy
 
 **Traffic Map** (Lobby → Traffic Map)
@@ -117,12 +121,13 @@ That's it: the theme and the Network Map page are installed and the GUI switches
 - Live download/upload sparklines; the table updates in place and rows slide to their new rank
 - Top 20 countries with live download/upload, share, connections, data transferred and the networks (e.g. GOOGLE, AMAZON-02) behind them
 - **All countries**: every country your network has talked to, recorded every minute even while the page is closed — downloaded, uploaded, connections, when it was last seen; sortable and searchable
+- **Connections**: open a country (or the *Connections* card for everything) to see each connection — which device, the remote address and port, the service (HTTPS, DNS, NTP, Steam, …), the network behind it, live rate, data transferred and how long it has been open; filterable
 - Hover a country for details, click a row for its top networks, pause/resume
 - IP-to-country data is downloaded to the firewall and refreshed daily at 01:00 — lookups never leave your network
 
 **Coverage**
 - Every MVC page: forms, tabs, data grids (Tabulator), edit dialogs, dropdowns, tooltips, popovers, the status dialog
-- Dashboard widgets as cards. Memory, Disk, Firewall States, Swap and Mbuf become live meters: the value in large type, a live graph of the last minutes, a capacity bar and a legend. Ring charts with dot legends, thin smooth traffic lines, pill-shaped thermal bars, a modern series palette — all follow the accent colour and recolour when you switch modes
+- Dashboard widgets as cards. The CPU widget gets a taller live graph with the load in large type, user / system / interrupt, a one-minute average and the CPU temperature. Memory, Disk, Firewall States, Swap and Mbuf become live meters: the value in large type, a live graph of the last minutes, a capacity bar and a legend. Ring charts with dot legends, thin smooth traffic lines, pill-shaped thermal bars, a modern series palette — all follow the accent colour and recolour when you switch modes
 - Classic PHP pages (bare inputs, `opnsense_standard_table_form` tables), the date picker, tokenizer, jqTree and nv.d3 charts
 - Collapsed sidebar (core's icon rail with hover fly-outs) and the phone drawer
 - Sign-in page: app-icon card, show-password button, Caps Lock hint, busy state while signing in
@@ -175,7 +180,7 @@ sh /tmp/unisense.sh
 
 Options can be passed through the one-liner too: `fetch -o - …/install.sh | sh -s -- --no-activate`.
 
-**Private repository or fork?** `fetch` cannot sign in to GitHub. Use a token with read access; the installer then downloads with `curl` and the token:
+**Installing from a private fork?** `fetch` cannot sign in to GitHub. Use a token with read access; the installer then downloads with `curl` and the token:
 
 ```sh
 export GITHUB_TOKEN=github_pat_xxx
@@ -215,6 +220,7 @@ Access is a normal privilege, **Lobby: Network Map**, so you can grant it to oth
 
 - **Map:** every country your firewall has connections with is shaded by how much traffic it carries; arcs run from your firewall's country to the busiest ones, with streaks of light flowing in (download) and out (upload) at a speed that follows the traffic. Hover a country for its rates, connections and networks.
 - **Top 20 countries:** download and upload now, share of all traffic, open connections, data transferred over those connections, and the networks (autonomous systems) behind them. Click a row for its top five networks.
+- **Connections:** click *Show the connections* under a country (or a country in *All countries*, or the *Connections* card for every country). Each line shows the device on your network (its Network Map name or hostname), the remote address and port, the service, the network (AS) it belongs to, the live download/upload, the data transferred so far and how long the connection has been open. The busiest 300 are listed; type to filter by device, address, service or network.
 - **All countries:** every country your network has talked to since the history started, with data downloaded and uploaded, connections, and when it was last seen ("now" with the live rate if it is active). Sort by any column, search by name; *Clear history* starts afresh. Countries not seen for 90 days are dropped. Clicking the *Countries* card opens this list.
 
 **Where the data comes from.** The page reads the firewall's state table (`pfctl`), the same connections *Firewall → Diagnostics → States* lists, and merges the LAN and NAT copies of each connection. Rates are the change in byte counters between two reads (every 3 seconds while the page is open). For the *All countries* history a second cron job, **UniSense: record Traffic Map history**, reads the state table once a minute, also while the page is closed; it adds only what moved since the previous read, and keeps the totals in `/var/db/unisense/trafficmap-history.json` (written at most once a minute). Connections that start and end between two reads are not counted.
@@ -281,6 +287,12 @@ The installer refreshes OPNsense's cache key so browsers fetch new files. If you
 <summary><b>Some charts use orange/blue/green.</b></summary>
 
 Dashboard meters and the CPU graph follow your accent colour. Multi-series charts (traffic, interface statistics, firewall rules) keep OPNsense's categorical palette so their series stay distinguishable.
+</details>
+
+<details>
+<summary><b>Will a firmware update break or remove the theme?</b></summary>
+
+No. OPNsense updates replace only the files of their own packages; UniSense's files are left alone. On top of that the installer adds a self-check (`/usr/local/opnsense/scripts/unisense/heal.sh`) that OPNsense runs after every firmware update and at every boot. It verifies every installed file against the installer's list, restores anything missing or empty from a copy of the same release kept in `/var/db/unisense/keep`, and clears the menu cache so the Lobby pages appear under the new core. It never changes your selected theme or cron jobs, and does nothing when all is in place (`sh install.sh --status` shows "Self-repair"). Each release is tested against OPNsense 25.7, 26.1 and 26.7 before it is published.
 </details>
 
 <details>

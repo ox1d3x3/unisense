@@ -59,7 +59,7 @@ t "network map api installed" '[ -s "$B/mvc/app/controllers/OPNsense/Unisense/Ap
 t "menu + acl installed" '[ -s "$B/mvc/app/models/OPNsense/Unisense/Menu/Menu.xml" ] && [ -s "$B/mvc/app/models/OPNsense/Unisense/ACL/ACL.xml" ]'
 t "js + css installed" '[ -s "$B/www/js/unisense/networkmap.js" ] && [ -s "$B/www/css/unisense/networkmap.css" ]'
 t "helper is executable" '[ -x "$B/scripts/unisense/settheme.php" ]'
-t "manifest lists every non-theme file" '[ "$(wc -l < "$B/www/themes/unisense/.files")" -eq "$(cd misc/theme-unisense/src/opnsense && find . -type f ! -path "./www/themes/*" | wc -l)" ]'
+t "manifest lists every non-theme file" '[ "$(wc -l < "$B/www/themes/unisense/.files")" -eq "$(cd misc/theme-unisense/src/opnsense && find . -type f ! -path "./www/themes/*" ! -path "*/__pycache__/*" ! -name "*.pyc" | wc -l)" ]'
 t "theme activated" '[ "$(theme)" = unisense ]'
 t "menu and acl caches cleared" '[ ! -e "$R/var/lib/php/tmp/opnsense_menu_cache.xml" ] && [ ! -e "$R/var/lib/php/tmp/opnsense_acl_cache.json" ]'
 t "asset cache key refreshed" '[ "$B/www/index.php" -nt "$R/conf/config.xml" ] || [ "$(find "$B/www/index.php" -newermt 2021-01-01 | wc -l)" -eq 1 ]'
@@ -83,7 +83,22 @@ sed -i 's:<theme>unisense</theme>:<theme>opnsense</theme>:' "$R/conf/config.xml"
 sh install.sh --local . --no-activate >/dev/null
 t "--no-activate leaves the theme alone" '[ "$(theme)" = opnsense ]'
 
+echo "survives firmware updates (self-repair)"
+H="$B/scripts/unisense/heal.sh"
+t "repair copy kept" '[ -s "$R/var/db/unisense/keep/unisense.tar.gz" ] && [ -s "$R/var/db/unisense/keep/files" ]'
+t "runs after firmware updates and at boot" '[ -x "$R/usr/local/etc/rc.syshook.d/update/50-unisense" ] && [ -x "$R/usr/local/etc/rc.syshook.d/start/50-unisense" ] && grep -q heal.sh "$R/usr/local/etc/rc.syshook.d/update/50-unisense"'
+t "nothing to do when intact" 'out="$(sh "$H")" && [ -z "$out" ]'
+rm -rf "$B/www/themes/unisense" "$B/www/js/unisense/networkmap.js"
+: > "$B/www/css/unisense/trafficmap.css"
+touch "$R/var/lib/php/tmp/opnsense_menu_cache.xml"
+t "repairs a removed theme and missing files" 'sh "$H" | grep -q "restored" && [ -s "$B/www/themes/unisense/build/css/main.css" ] && [ -s "$B/www/js/unisense/networkmap.js" ] && [ -s "$B/www/css/unisense/trafficmap.css" ] && [ -s "$B/www/themes/unisense/.files" ]'
+t "repair keeps the selected theme" '[ "$(theme)" = opnsense ]'
+t "menu cache cleared for the new core" '[ ! -e "$R/var/lib/php/tmp/opnsense_menu_cache.xml" ]'
+t "quiet again once repaired" 'out="$(sh "$H")" && [ -z "$out" ]'
+t "status shows self-repair" 'sh install.sh --status | grep -q "Self-repair"'
+
 echo "uninstall"
+cp "$H" "$W/heal-copy.sh"
 sh install.sh --local . >/dev/null
 mkdir -p "$R/var/db/unisense" && echo "{}" > "$R/var/db/unisense/meta.json"
 sh install.sh --uninstall --yes >/dev/null
@@ -93,6 +108,8 @@ t "plugin files removed" '[ -z "$(find "$B" -path "*nisense*")" ]'
 t "core files still there" '[ -d "$B/www/themes/opnsense" ] && [ -s "$B/mvc/app/models/OPNsense/Core/Core.xml" ] && [ -f "$B/www/index.php" ]'
 t "daily update job removed" '! grep -q unisense-cron "$R/conf/config.xml"'
 t "IP databases removed" '[ ! -e "$R/var/db/unisense" ]'
+t "firmware-update hooks removed" '[ ! -e "$R/usr/local/etc/rc.syshook.d/update/50-unisense" ] && [ ! -e "$R/usr/local/etc/rc.syshook.d/start/50-unisense" ]'
+t "self-check is a no-op once removed" 'sh "$W/heal-copy.sh"' 
 t "uninstall twice is harmless" 'sh install.sh --uninstall --yes >/dev/null'
 rm -rf "$W"
 
