@@ -295,6 +295,28 @@
             sets.forEach(function (ds) {
                 ds.borderWidth = 0;
             });
+            /* Thermal Sensors: slimmer pills over a track, theme status colours */
+            var track = sets[1] && Array.isArray(sets[1].backgroundColor) && String(sets[1].backgroundColor[0]).toUpperCase() === '#E5E5E5';
+            if (o.indexAxis === 'y' && track) {
+                [sets[0], sets[1]].forEach(function (ds) {
+                    ds.barPercentage = 0.62;
+                    ds.borderRadius = 999;
+                    ds.borderSkipped = 'middle';    /* round the two outer ends of the stack */
+                });
+                Object.keys(o.scales || {}).forEach(function (k) {
+                    o.scales[k].border = Object.assign(o.scales[k].border || {}, { display: false });
+                    o.scales[k].grid = Object.assign(o.scales[k].grid || {}, { display: false, drawBorder: false });
+                });
+                var pick = sets[0].backgroundColor;
+                if (typeof pick === 'function' && !pick.__us) {
+                    var wrapped = function (ctx) {
+                        var v = pick.call(this, ctx);
+                        return Array.isArray(v) ? v.map(mapColor) : mapColor(v);
+                    };
+                    wrapped.__us = true;
+                    sets[0].backgroundColor = wrapped;
+                }
+            }
         }
     }
 

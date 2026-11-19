@@ -602,3 +602,31 @@ div {
 .us-meter .us-s1 { background: var(--us-chart-2); }
 .us-meter .us-s2 { background: var(--us-series-5); }
 .us-meter .us-free { background: var(--us-surface-3); box-shadow: inset 0 0 0 1px var(--us-line-strong); }
+
+// DHCP lease usage (Dnsmasq / Kea widgets): core draws an 18px bar with the
+// text on top of it; shown as the text over a slim meter instead
+.grid-stack .progress[role="progressbar"] {
+  display: grid;
+  grid-template-rows: auto 6px;
+  row-gap: 6px;
+  height: auto !important;
+  overflow: visible;
+  border-radius: 0;
+  background: linear-gradient(var(--us-line), var(--us-line)) 0 100% / 100% 6px no-repeat;
+  box-shadow: none;
+
+  > .progress-bar {
+    grid-row: 2;
+    height: 6px;
+    border-radius: 999px;
+    background-color: var(--us-accent);
+  }
+  > div:not(.progress-bar) {
+    position: static !important;
+    grid-row: 1;
+    justify-content: flex-start !important;
+    color: var(--us-text);
+    font-size: 12.5px;
+    font-weight: 600 !important;
+  }
+}

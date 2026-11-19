@@ -47,6 +47,9 @@ DASHBOARD = {'options': {}, 'widgets': [
     {'id': 'services', 'x': 0, 'y': 2, 'w': 4},
     {'id': 'interfacestatistics', 'x': 4, 'y': 2, 'w': 4},
     {'id': 'announcements', 'x': 8, 'y': 2, 'w': 4},
+    {'id': 'firewallstates', 'x': 0, 'y': 3, 'w': 2},
+    {'id': 'thermalsensors', 'x': 2, 'y': 3, 'w': 3},
+    {'id': 'dnsmasqleases', 'x': 5, 'y': 3, 'w': 3},
 ]}
 
 IFACES = {
@@ -156,7 +159,17 @@ MOCKS = {
          'mac_info': 'Apple, Inc.'},
         {'address': '192.168.30.20', 'hwaddr': '9a:00:00:00:00:30', 'hostname': 'guest-laptop', 'if': 'igc1_vlan30',
          'if_descr': 'GUEST'}]),
-    '/api/dnsmasq/leases/search': grid([]),
+    '/api/dnsmasq/leases/search': grid([
+        {'address': '192.168.1.31', 'hostname': 'pixel-9', 'hwaddr': '3c:5a:b4:77:88:99', 'expire': 2000000000},
+        {'address': '192.168.1.77', 'hostname': 'Rehenomas-iPad', 'hwaddr': '8c:85:90:00:00:09', 'expire': 1999999000},
+        {'address': '192.168.1.42', 'hostname': '*', 'hwaddr': '7c:2e:0d:de:ad:01', 'expire': 1999998000}]),
+    '/api/dnsmasq/settings/get': {'dnsmasq': {'enable': '1', 'dhcp': {'lease_max': ''}}},
+    '/api/diagnostics/firewall/pf_states': {'current': '1210', 'limit': '1617800'},
+    '/api/diagnostics/system/system_temperature': [
+        {'device': 'dev.cpu.%d.temperature' % i, 'device_seq': str(i), 'type': 'cpu', 'type_translated': 'CPU',
+         'temperature': str(t)} for i, t in enumerate((44.0, 47.0, 52.0, 81.0))] + [
+        {'device': 'hw.acpi.thermal.tz0.temperature', 'device_seq': '0', 'type': 'zone', 'type_translated': 'Zone',
+         'temperature': '27.9'}],
     # ISC DHCP (core up to 25.7, plugin later): different field names
     '/api/dhcpv4/leases/search_lease': grid([
         {'address': '192.168.1.5', 'mac': '00:11:32:aa:bb:cc', 'hostname': 'diskstation', 'man': 'Synology Incorporated',
