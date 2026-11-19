@@ -156,9 +156,16 @@ def main():
         check(len(heights) == 1, f'tiles keep one height while traffic comes and goes ({sorted(heights)})')
         check(pg.locator('.usn-net', has_text='Loopback').count() == 0 and pg.locator('button[data-filter="lo0"]').count() == 0,
               'loopback is not shown')
-        lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane.is-on')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
+        # the mock's traffic is random and can be idle for a poll: wait for a busy one
+        lanes = ripples = 0
+        for _ in range(8):
+            lanes = pg.evaluate("[...document.querySelectorAll('.usn-lane.is-on')].filter(l => l.__usnAnim && l.__usnAnim.playState === 'running').length")
+            ripples = pg.locator('.usn-tile.is-active .usn-ripple').count()
+            if lanes >= 4 and ripples >= 1:
+                break
+            pg.wait_for_timeout(1500)
         check(lanes >= 4, f'live data flow runs on the links ({lanes} lanes)')
-        check(pg.locator('.usn-tile.is-active .usn-ripple').count() >= 1, 'busy devices ripple')
+        check(ripples >= 1, 'busy devices ripple')
         check(pg.evaluate("""[...document.querySelectorAll('.usn-tile')].every(t => {
             const n = t.querySelector('.usn-tile-name'); const i = n && n.querySelector('.usn-live-ind');
             return i && i.previousElementSibling && i.previousElementSibling.classList.contains('usn-tile-label');
