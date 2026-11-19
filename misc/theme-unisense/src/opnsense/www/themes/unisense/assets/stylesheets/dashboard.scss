@@ -484,3 +484,121 @@ div {
   padding-right: 16px;
 }
 .cpu-canvas-container { padding-bottom: 8px; }
+
+// ---------------------------------------------------------------------------
+// Live usage meters (theme.js replaces the half-doughnut gauges of Memory,
+// Disk, Firewall States, Swap and MBUF): value, live graph, capacity bar.
+// The original gauge stays in the page, invisible, because widget code reads
+// from its chart.
+// ---------------------------------------------------------------------------
+.canvas-container.us-gauge-src {
+  position: absolute !important;
+  width: 2px !important;
+  height: 1px !important;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.us-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 16px 16px;
+}
+
+.us-meter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+}
+.us-meter-value {
+  color: var(--us-heading);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  small { margin-left: 2px; color: var(--us-text-3); font-size: 15px; font-weight: 500; letter-spacing: 0; }
+}
+.us-meter-sub {
+  color: var(--us-text-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.us-meter-graph {
+  position: relative;
+  height: 96px;
+  border-radius: 8px;
+  background: var(--us-surface-2);
+  cursor: crosshair;
+
+  > canvas { display: block; width: 100%; height: 100%; }
+}
+.us-meter-hi,
+.us-meter-lo {
+  position: absolute;
+  right: 6px;
+  color: var(--us-text-3);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.us-meter-hi { top: 4px; }
+.us-meter-lo { bottom: 4px; }
+.us-meter-tip {
+  position: absolute;
+  top: -6px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--us-line);
+  border-radius: 8px;
+  background: var(--us-surface);
+  box-shadow: var(--us-shadow-2);
+  color: var(--us-text);
+  font-size: 11.5px;
+  white-space: nowrap;
+  transform: translateY(-100%);
+  pointer-events: none;
+
+  &[hidden] { display: none; }
+  b { color: var(--us-heading); font-weight: 600; }
+  span { display: flex; align-items: center; gap: 6px; }
+  i { width: 8px; height: 8px; border-radius: 50%; }
+}
+
+.us-meter-bar {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--us-surface-3);
+
+  > i { display: block; height: 100%; transition: width .6s var(--us-ease); }
+}
+@media (prefers-reduced-motion: reduce) { .us-meter-bar > i { transition: none; } }
+
+.us-meter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--us-text-2);
+  font-size: 12px;
+
+  > span { display: inline-flex; align-items: center; gap: 6px; }
+  b { width: 8px; height: 8px; border-radius: 50%; }
+  em { color: var(--us-text-3); font-style: normal; font-variant-numeric: tabular-nums; }
+}
+
+// series colours shared by bar, legend and tooltip
+.us-meter .us-s0 { background: var(--us-chart-1); }
+.us-meter .us-s1 { background: var(--us-chart-2); }
+.us-meter .us-s2 { background: var(--us-series-5); }
+.us-meter .us-free { background: var(--us-surface-3); box-shadow: inset 0 0 0 1px var(--us-line-strong); }

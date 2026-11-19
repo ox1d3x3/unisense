@@ -16,6 +16,7 @@
  * Nothing here is required for the GUI to work: with JavaScript disabled or
  * storage blocked the theme simply follows the operating system.
  */
+/* global BaseGaugeWidget */
 (function () {
     'use strict';
 
@@ -142,6 +143,7 @@
         '#28A745': '--us-ok', '#FFC107': '--us-warn', '#DC3545': '--us-crit'
     };
     var paletteCache = {};
+    var meters = [];          /* live usage meters on the dashboard */
     var probe = null;
 
     /* computed colours come back as rgb()/rgba() or, for color-mix(), color(srgb r g b [/ a]) */
@@ -411,6 +413,9 @@
             if (surface && C.defaults.elements && C.defaults.elements.arc) {
                 C.defaults.elements.arc.borderColor = surface;
             }
+            meters.forEach(function (m) {
+                m.draw(0);
+            });
             var instances = C.instances || {};
             Object.keys(instances).forEach(function (k) {
                 var chart = instances[k];
@@ -420,6 +425,376 @@
             });
         } catch (e) {
             /* never let cosmetics break a page */
+        }
+    }
+
+    /* --------------------------------------------------- live usage meters */
+    /*
+     * Core's Memory, Disk, Firewall States, Swap and MBUF widgets draw a half
+     * doughnut gauge. UniSense shows them like the CPU widget instead: the
+     * value in large type, a live area graph of the last minutes (auto-scaled,
+     * so small changes are visible, with a hover read-out), a slim capacity
+     * bar and a legend. The gauge chart keeps running, hidden, because widget
+     * code reads from it; the meter is fed from the same updateChart() call.
+     * History survives a page reload (sessionStorage).
+     */
+    var METER_TICK = { Memory: 5, FirewallStates: 10, Mbuf: 15, Swap: 15, Disk: 60 };
+    var METER_POINTS = 90;
+
+    function patchGauges() {
+        if (typeof BaseGaugeWidget === 'undefined' || BaseGaugeWidget.prototype.__us) {
+            return;
+        }
+        var P = BaseGaugeWidget.prototype;
+        P.__us = true;
+        var create = P.createGaugeChart;
+        var update = P.updateChart;
+        P.createGaugeChart = function (options) {
+            create.call(this, options);
+            try {
+                mountMeter(this, options || {});
+            } catch (e) { /* the gauge still works */ }
+        };
+        P.updateChart = function (data) {
+            update.call(this, data);
+            try {
+                if (this.__usMeter) {
+                    this.__usMeter.push(data);
+                }
+            } catch (e) { /* cosmetic only */ }
+        };
+    }
+
+    function mountMeter(w, opts) {
+        var canvas = document.getElementById(w.id + '-chart');
+        var box = canvas && canvas.closest('.canvas-container');
+        if (!box || box.style.display === 'none') {
+            return;
+        }
+        var name = w.constructor && w.constructor.name;
+        if (METER_TICK[name] && w.tickTimeout > METER_TICK[name]) {
+            w.tickTimeout = METER_TICK[name];
+        }
+        box.classList.add('us-gauge-src');
+        var node = document.createElement('div');
+        node.className = 'us-meter';
+        node.innerHTML =
+            '<div class="us-meter-head"><span class="us-meter-value">&mdash;</span><span class="us-meter-sub"></span></div>' +
+            '<div class="us-meter-graph"><canvas></canvas><span class="us-meter-hi"></span><span class="us-meter-lo"></span>' +
+            '<span class="us-meter-tip" hidden></span></div>' +
+            '<div class="us-meter-bar"></div><div class="us-meter-legend"></div>';
+        box.parentNode.insertBefore(node, box.nextSibling);
+        w.__usMeter = new Meter(w, opts, node);
+        meters.push(w.__usMeter);
+    }
+
+    function Meter(w, opts, node) {
+        var self = this;
+        this.w = w;
+        this.opts = opts;
+        this.el = node;
+        this.value = node.querySelector('.us-meter-value');
+        this.sub = node.querySelector('.us-meter-sub');
+        this.graph = node.querySelector('.us-meter-graph');
+        this.canvas = node.querySelector('canvas');
+        this.hiEl = node.querySelector('.us-meter-hi');
+        this.loEl = node.querySelector('.us-meter-lo');
+        this.tip = node.querySelector('.us-meter-tip');
+        this.bar = node.querySelector('.us-meter-bar');
+        this.legend = node.querySelector('.us-meter-legend');
+        this.key = 'unisense.meter.' + w.id;
+        this.hist = [];
+        this.offset = 0;
+        this.hover = -1;
+        try {
+            var saved = JSON.parse(window.sessionStorage.getItem(this.key) || '[]');
+            /* forget history older than the graph spans */
+            var since = Date.now() - METER_POINTS * (w.tickTimeout || 10) * 1000;
+            this.hist = Array.isArray(saved) ? saved.filter(function (h) { return h && h.t > since; }) : [];
+        } catch (e) { /* no storage */ }
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(function () {
+                self.draw(0);
+            }).observe(this.graph);
+        }
+        this.graph.addEventListener('mousemove', function (e) {
+            self.hoverAt(e.clientX);
+        });
+        this.graph.addEventListener('mouseleave', function () {
+            self.hover = -1;
+            self.tip.hidden = true;
+            self.draw(0);
+        });
+    }
+
+    Meter.prototype.push = function (data) {
+        var sum = 0;
+        var i;
+        for (i = 0; i < data.length; i++) {
+            sum += +data[i] || 0;
+        }
+        if (!(sum > 0)) {
+            return;
+        }
+        var vals = [];
+        for (i = 0; i < data.length - 1; i++) {
+            vals.push(Math.round((+data[i] || 0) / sum * 10000) / 100);
+        }
+        var ds = this.w.chart && this.w.chart.config.data.datasets[0];
+        if (ds && ds.pct && isFinite(+ds.pct[0])) {
+            vals[0] = +ds.pct[0];
+        }
+        var primary = this.opts.primaryText ? this.opts.primaryText(data, this.w.chart) :
+            (data[0] / sum * 100).toFixed(2) + '%';
+        var secondary = this.opts.secondaryText ? this.opts.secondaryText(data, this.w.chart) : '';
+        var m = String(primary).match(/^\s*([\d.,]+)\s*%\s*$/);
+        this.value.innerHTML = m ? escapeHtml(m[1]) + '<small>%</small>' : escapeHtml(String(primary));
+        this.sub.textContent = secondary ? String(secondary).replace(/^\((.*)\)$/, '$1') : '';
+
+        /* capacity bar + legend (all but the last value, which is "free") */
+        var labels = this.opts.labels || [];
+        var bar = '';
+        var leg = '';
+        for (i = 0; i < vals.length; i++) {
+            bar += '<i class="us-s' + i + '" style="width:' + Math.max(0, Math.min(100, vals[i])) + '%"></i>';
+            leg += '<span><b class="us-s' + i + '"></b>' + escapeHtml(labels[i] || '') + ' <em>' + vals[i].toFixed(vals[i] < 10 ? 2 : 1) + '%</em></span>';
+        }
+        if (labels[vals.length]) {
+            var free = Math.max(0, 100 - vals.reduce(function (a, b) { return a + b; }, 0));
+            leg += '<span><b class="us-free"></b>' + escapeHtml(labels[vals.length]) + ' <em>' + free.toFixed(free < 10 ? 2 : 1) + '%</em></span>';
+        }
+        this.bar.innerHTML = bar;
+        if (this.legend.__last !== leg) {
+            this.legend.__last = leg;
+            this.legend.innerHTML = leg;
+        }
+
+        var last = this.hist[this.hist.length - 1];
+        /* the hidden gauge may be redrawn with the same sample: ignore repeats within a second */
+        if (last && Date.now() - last.t < 1000) {
+            last.v = vals;
+        } else {
+            this.hist.push({ t: Date.now(), v: vals });
+            if (this.hist.length > METER_POINTS) {
+                this.hist.splice(0, this.hist.length - METER_POINTS);
+            }
+            this.slide();
+        }
+        try {
+            window.sessionStorage.setItem(this.key, JSON.stringify(this.hist));
+        } catch (e) { /* storage full or blocked */ }
+        this.draw(0);
+    };
+
+    /* a new point slides in from the right */
+    Meter.prototype.slide = function () {
+        var self = this;
+        if (reducedMotion() || this.hist.length < 2) {
+            return;
+        }
+        var t0 = performance.now();
+        cancelAnimationFrame(this.raf || 0);
+        var step = function (now) {
+            var k = Math.min(1, (now - t0) / 600);
+            self.offset = 1 - (1 - Math.pow(1 - k, 3));
+            self.draw(0);
+            self.raf = k < 1 ? requestAnimationFrame(step) : 0;
+        };
+        this.offset = 1;
+        this.raf = requestAnimationFrame(step);
+    };
+
+    Meter.prototype.range = function () {
+        var lo = 100, hi = 0;
+        this.hist.forEach(function (h) {
+            var top = 0;
+            h.v.forEach(function (v) {
+                top += v;
+            });
+            lo = Math.min(lo, h.v[0]);
+            hi = Math.max(hi, top);
+        });
+        if (lo > hi) {
+            return [0, 100];
+        }
+        var pad = Math.max(1, (hi - lo) * 0.35);
+        var a = Math.max(0, lo - pad), b = Math.min(100, hi + pad);
+        if (b - a < 4) {
+            var mid = (a + b) / 2;
+            a = Math.max(0, mid - 2);
+            b = Math.min(100, a + 4);
+            a = Math.max(0, b - 4);
+        }
+        var nice = b - a > 20 ? 5 : 1;
+        return [Math.floor(a / nice) * nice, Math.ceil(b / nice) * nice];
+    };
+
+    Meter.prototype.geometry = function () {
+        var w = this.graph.clientWidth, h = this.graph.clientHeight;
+        var n = this.hist.length;
+        /* until the history fills the graph, spread it over fewer slots */
+        var stepX = w / (Math.max(16, Math.min(METER_POINTS, n)) - 1);
+        return { w: w, h: h, n: n, stepX: stepX, x: function (i) { return w - (n - 1 - i) * stepX; } };
+    };
+
+    Meter.prototype.draw = function () {
+        var c = this.canvas;
+        var g = this.geometry();
+        if (!g.w || !g.h) {
+            return;
+        }
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        if (c.width !== Math.round(g.w * dpr) || c.height !== Math.round(g.h * dpr)) {
+            c.width = Math.round(g.w * dpr);
+            c.height = Math.round(g.h * dpr);
+        }
+        var ctx = c.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, g.w, g.h);
+        var r = this.range();
+        this.hiEl.textContent = r[1] + '%';
+        this.loEl.textContent = r[0] + '%';
+        var top = 6, bottom = g.h - 2;
+        var y = function (v) {
+            return bottom - (v - r[0]) / (r[1] - r[0]) * (bottom - top);
+        };
+        /* grid */
+        ctx.strokeStyle = cssVar('--us-line') || 'rgba(128,128,128,.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        for (var gl = 0; gl <= 3; gl++) {
+            var gy = Math.round(top + (bottom - top) * gl / 3) + 0.5;
+            ctx.moveTo(0, gy);
+            ctx.lineTo(g.w, gy);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (g.n < 1) {
+            return;
+        }
+        var shift = this.offset * g.stepX;
+        var hist = this.hist;
+        var colors = [resolveToken('--us-chart-1') || '#006fff', resolveToken('--us-chart-2') || '#38cc65'];
+        var series = hist[g.n - 1].v.length;
+        ctx.save();
+        ctx.translate(shift, 0);
+        /* stacked areas, top series first so the lower one is drawn over it */
+        for (var s = Math.min(series, 2) - 1; s >= 0; s--) {
+            var pts = [];
+            for (var i = 0; i < g.n; i++) {
+                pts.push([g.x(i), y(stackTop(hist[i], s))]);
+            }
+            if (pts.length === 1) {
+                pts.unshift([pts[0][0] - g.stepX, pts[0][1]]);
+            }
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (var j = 1; j < pts.length; j++) {
+                /* smooth: quadratic segments through the midpoints */
+                var mx = (pts[j - 1][0] + pts[j][0]) / 2, my = (pts[j - 1][1] + pts[j][1]) / 2;
+                ctx.quadraticCurveTo(pts[j - 1][0], pts[j - 1][1], mx, my);
+            }
+            ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+            ctx.strokeStyle = colors[s];
+            ctx.lineWidth = s === 0 ? 2 : 1.25;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+            ctx.lineTo(pts[pts.length - 1][0], bottom + 2);
+            ctx.lineTo(pts[0][0], bottom + 2);
+            ctx.closePath();
+            var grad = ctx.createLinearGradient(0, top, 0, bottom);
+            grad.addColorStop(0, withAlpha(colors[s], s === 0 ? 0.32 : 0.22));
+            grad.addColorStop(1, withAlpha(colors[s], 0.02));
+            ctx.fillStyle = grad;
+            ctx.fill();
+        }
+        /* the latest value */
+        var lx = g.x(g.n - 1), ly = y(hist[g.n - 1].v[0]);
+        ctx.fillStyle = withAlpha(colors[0], 0.22);
+        ctx.beginPath();
+        ctx.arc(lx - 1, ly, 6, 0, 6.2832);
+        ctx.fill();
+        ctx.fillStyle = colors[0];
+        ctx.beginPath();
+        ctx.arc(lx - 1, ly, 3, 0, 6.2832);
+        ctx.fill();
+        /* hover guide */
+        if (this.hover >= 0 && this.hover < g.n) {
+            var hx = Math.round(g.x(this.hover)) + 0.5;
+            ctx.strokeStyle = withAlpha(colors[0], 0.5);
+            ctx.beginPath();
+            ctx.moveTo(hx, top);
+            ctx.lineTo(hx, bottom);
+            ctx.stroke();
+            ctx.fillStyle = colors[0];
+            ctx.beginPath();
+            ctx.arc(hx, y(hist[this.hover].v[0]), 3, 0, 6.2832);
+            ctx.fill();
+        }
+        ctx.restore();
+    };
+
+    Meter.prototype.hoverAt = function (clientX) {
+        var g = this.geometry();
+        if (!g.n) {
+            return;
+        }
+        var rect = this.graph.getBoundingClientRect();
+        var i = Math.round(g.n - 1 - (g.w - (clientX - rect.left)) / g.stepX);
+        if (i < 0 || i >= g.n) {
+            this.hover = -1;
+            this.tip.hidden = true;
+            this.draw(0);
+            return;
+        }
+        this.hover = i;
+        var h = this.hist[i];
+        var labels = this.opts.labels || [];
+        var d = new Date(h.t);
+        var pad = function (v) { return (v < 10 ? '0' : '') + v; };
+        this.tip.innerHTML = '<b>' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '</b>' +
+            h.v.map(function (v, k) {
+                return '<span><i class="us-s' + k + '"></i>' + escapeHtml(labels[k] || '') + ' ' + v.toFixed(2) + '%</span>';
+            }).join('');
+        this.tip.hidden = false;
+        var x = g.x(i);
+        this.tip.style.left = Math.max(4, Math.min(g.w - this.tip.offsetWidth - 4, x - this.tip.offsetWidth / 2)) + 'px';
+        this.draw(0);
+    };
+
+    function stackTop(h, s) {
+        var t = 0;
+        for (var k = 0; k <= s; k++) {
+            t += h.v[k] || 0;
+        }
+        return t;
+    }
+
+    function withAlpha(color, a) {
+        var m = String(color).match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+        if (m) {
+            return 'rgba(' + m[1] + ',' + m[2] + ',' + m[3] + ',' + a + ')';
+        }
+        var hx = String(color).match(/^#([0-9a-f]{6})$/i);
+        if (hx) {
+            var n = parseInt(hx[1], 16);
+            return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+        }
+        return color;
+    }
+
+    function escapeHtml(v) {
+        return String(v).replace(/[&<>"']/g, function (ch) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+        });
+    }
+
+    function reducedMotion() {
+        try {
+            return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        } catch (e) {
+            return false;
         }
     }
 
@@ -960,8 +1335,15 @@
     }
 
     /* ------------------------------------------------------------- boot */
+    try {
+        patchGauges();    /* BaseGaugeWidget.js loads before this file on the dashboard */
+    } catch (e) { /* cosmetic only */ }
+
     function onReady() {
         installChartPlugin();
+        try {
+            patchGauges();
+        } catch (e) { /* cosmetic only */ }
         patchSmoothie();
         refreshCharts();
         try {

@@ -9,6 +9,7 @@
 import argparse
 import json
 import os
+import math
 import random
 import re
 import uuid
@@ -269,6 +270,11 @@ class Handler(SimpleHTTPRequestHandler):
                                           'rate_bits_out': random.randint(10000, 9000000)}
                                          for ip in ips.get(intf, []) if random.random() < 0.6]}
             return self._json(out)
+        if path == '/api/diagnostics/system/system_resources':
+            # memory that moves a little, like a real box
+            used = 2300 + int(120 * math.sin(time.time() / 9)) + random.randint(-25, 25)
+            return self._json({'memory': {'total': '8361738240', 'total_frmt': '7974', 'used': str(used * 1048576),
+                                          'used_frmt': str(used), 'arc': '1073741824', 'arc_frmt': '1024'}})
         if path == '/api/diagnostics/firewall/stream_log':
             rules = [('r1', 'Default deny / state violation rule', 'block', 'wan'),
                      ('r2', 'Allow LAN to any', 'pass', 'lan'),
@@ -380,6 +386,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({'ok': True, 'db': self.tm_db()})
         if action == 'update':
             return self._json({'status': 'started'})
+        if action == 'history':
+            return self._json(self.tm_history())
+        if action == 'reset':
+            return self._json({'ok': True})
         if action != 'flows':
             return self._json({'ok': False, 'error': 'unknown action'})
         self.TM_TICK[0] += 1
@@ -401,6 +411,22 @@ class Handler(SimpleHTTPRequestHandler):
         countries.sort(key=lambda c: (c['in_bps'] + c['out_bps'], c['bytes_in'] + c['bytes_out']), reverse=True)
         return self._json({'ok': True, 'ts': int(time.time()), 'interval': 0 if first else 3.0, 'home': 'AU',
                            'db': self.tm_db(), 'totals': tot, 'countries': countries})
+
+    # countries seen earlier but not right now (history only)
+    TM_PAST = ['CN', 'IE', 'SE', 'FI', 'ES', 'IT', 'PL', 'TW', 'VN', 'TH', 'MY', 'ID', 'PH', 'AE', 'IL', 'MX', 'AR', 'CL',
+               'CH', 'AT', 'BE', 'DK', 'NO', 'PT', 'CZ', 'RO', 'UA', 'TR', 'EG', 'NG', 'KE', 'RU']
+
+    def tm_history(self):
+        now = int(time.time())
+        out = []
+        for i, (cc, dn, up, conns, _) in enumerate(self.TM_COUNTRIES):
+            out.append({'cc': cc, 'bytes_in': int(dn * 3600 * 9), 'bytes_out': int(up * 3600 * 9), 'conns': conns * 61,
+                        'first': now - 86400 * 6, 'last': now})
+        for i, cc in enumerate(self.TM_PAST):
+            out.append({'cc': cc, 'bytes_in': int(4e9 / (i + 2) ** 1.6), 'bytes_out': int(4e8 / (i + 2) ** 1.6),
+                        'conns': 200 // (i + 1) + 1, 'first': now - 86400 * 5, 'last': now - 3600 * (i * 3 + 1)})
+        out.sort(key=lambda c: c['bytes_in'] + c['bytes_out'], reverse=True)
+        return {'ok': True, 'ts': now, 'since': now - 86400 * 6, 'countries': out}
 
     def tm_db(self):
         if os.environ.get('UNISENSE_HARNESS_NODB'):

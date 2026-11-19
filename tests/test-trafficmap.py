@@ -242,6 +242,43 @@ def main():
     r3 = json.loads(run(['flows'], env).stdout)
     t('counter reset gives no negative rate', all(x['in_bps'] >= 0 and x['out_bps'] >= 0 for x in r3['countries']))
 
+    print('history (all countries ever seen)')
+    hist = work / 'hist.json'
+    henv = dict(env, UNISENSE_FLOW_CACHE=str(work / 'cache-h.json'), UNISENSE_HISTORY=str(hist),
+                UNISENSE_HISTORY_FLUSH='0')
+    sfile.write_text(states(1))
+    base = {x['cc']: x for x in json.loads(run(['flows'], dict(henv, UNISENSE_FLOW_CACHE=str(work / 'cache-x.json'),
+                                                                UNISENSE_HISTORY=str(work / 'hist-x.json'))).stdout)['countries']}
+    r = run(['sample'], henv)
+    t('sample runs quietly', r.returncode == 0 and r.stdout == '', r.stdout + r.stderr)
+    h = json.loads(hist.read_text())
+    us = h['c'].get('US')
+    t('first sample counts every connection in full', us and us[0] == base['US']['bytes_in'] and us[1] == base['US']['bytes_out'] and us[2] == 3,
+      (us, base.get('US')))
+    t('history start recorded', h['since'] > 0)
+    sfile.write_text(states(3))
+    run(['sample'], henv)
+    us3 = json.loads(hist.read_text())['c']['US']
+    t('later samples add only what moved since (no double counting)', us3[0] == base['US']['bytes_in'] * 3 and us3[2] == 3, us3)
+    sfile.write_text(states(1))
+    run(['sample'], henv)
+    us4 = json.loads(hist.read_text())['c']['US']
+    t('a replaced state (counters went back) counts as a new connection', us4[2] == 6 and us4[0] == us3[0] + base['US']['bytes_in'], us4)
+    lazy = dict(henv, UNISENSE_HISTORY_FLUSH='3600')
+    sfile.write_text(states(2))
+    run(['sample'], lazy)
+    t('disk writes are batched (at most once a minute)', json.loads(hist.read_text())['c']['US'] == us4)
+    hv = json.loads(run(['history'], lazy).stdout)
+    hus = next((x for x in hv['countries'] if x['cc'] == 'US'), {})
+    t('history output includes the not yet written part', hus.get('bytes_in') == us4[0] + base['US']['bytes_in'], hus)
+    t('history lists every country, busiest first', len(hv['countries']) >= 3 and
+      [x['bytes_in'] + x['bytes_out'] for x in hv['countries']] == sorted([x['bytes_in'] + x['bytes_out'] for x in hv['countries']], reverse=True),
+      [x['cc'] for x in hv['countries']])
+    t('first and last seen', hus.get('first', 0) <= hus.get('last', 0) and hus.get('last', 0) > 0, hus)
+    r = run(['reset'], lazy)
+    hv = json.loads(run(['history'], lazy).stdout)
+    t('reset starts afresh', json.loads(r.stdout)['ok'] and not hist.exists() and hv['countries'] == [], hv)
+
     print('robustness')
     sfile.write_text('garbage line\n  age broken\nall tcp 1.2.3.4\n')
     r = run(['flows'], env)

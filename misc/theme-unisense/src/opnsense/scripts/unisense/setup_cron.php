@@ -45,13 +45,17 @@ use OPNsense\Core\Config;
 use OPNsense\Cron\Cron;
 
 const ORIGIN = 'UniSense';
-const COMMAND = 'unisense geoip update';
+/* command => [description, minutes, hours] */
+const JOBS = [
+    'unisense geoip update' => ['UniSense: update IP-to-country databases (Traffic Map)', '0', '1'],
+    'unisense trafficmap sample' => ['UniSense: record Traffic Map history (every minute)', '*', '*'],
+];
 
 function find_jobs($mdl)
 {
     $found = [];
     foreach ($mdl->jobs->job->iterateItems() as $uuid => $job) {
-        if ((string)$job->origin === ORIGIN || (string)$job->command === COMMAND) {
+        if ((string)$job->origin === ORIGIN || isset(JOBS[(string)$job->command])) {
             $found[$uuid] = $job;
         }
     }
@@ -67,15 +71,26 @@ try {
     $jobs = find_jobs($mdl);
 
     if ($action === 'install') {
-        if (count($jobs)) {
+        $have = [];
+        foreach ($jobs as $job) {
+            $have[(string)$job->command] = true;
+        }
+        $added = 0;
+        foreach (JOBS as $command => [$descr, $minutes, $hours]) {
+            if (isset($have[$command])) {
+                continue;
+            }
+            $uuid = $mdl->newDailyJob(ORIGIN, $command, $descr, '*', '1');
+            $job = $mdl->getNodeByReference('jobs.job.' . $uuid);
+            $job->minutes = $minutes;
+            $job->hours = $hours;
+            $added++;
+        }
+        if (!$added) {
             $cnf->unlock();
             echo "exists" . PHP_EOL;
             exit(0);
         }
-        $uuid = $mdl->newDailyJob(ORIGIN, COMMAND, 'UniSense: update IP-to-country databases (Traffic Map)', '*', '1');
-        $job = $mdl->getNodeByReference('jobs.job.' . $uuid);
-        $job->minutes = '0';
-        $job->hours = '1';
         $errors = $mdl->performValidation();
         if (count($errors)) {
             $msg = [];
@@ -87,7 +102,7 @@ try {
             exit(1);
         }
         $mdl->serializeToConfig();
-        $cnf->save(['description' => 'UniSense: daily IP database update at 01:00']);
+        $cnf->save(['description' => 'UniSense: Traffic Map jobs (IP database at 01:00, history every minute)']);
         $cnf->unlock();
         echo "ok" . PHP_EOL;
     } elseif ($action === 'remove') {
@@ -100,7 +115,7 @@ try {
             $mdl->jobs->job->del($uuid);
         }
         $mdl->serializeToConfig(false, true);
-        $cnf->save(['description' => 'UniSense: removed the IP database update job']);
+        $cnf->save(['description' => 'UniSense: removed the Traffic Map jobs']);
         $cnf->unlock();
         echo "ok" . PHP_EOL;
     } else {

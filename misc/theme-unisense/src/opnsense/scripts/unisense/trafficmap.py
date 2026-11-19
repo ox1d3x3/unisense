@@ -24,6 +24,7 @@
     Copyright (c) 2026 Ox1d3x3 — BSD 2-Clause (see LICENSE)
 """
 import gzip
+import fcntl
 import ipaddress
 import json
 import mmap
@@ -45,6 +46,10 @@ PFCTL = os.environ.get('UNISENSE_PFCTL', '/sbin/pfctl')
 IFCONFIG = os.environ.get('UNISENSE_IFCONFIG', '/sbin/ifconfig')
 CONFIG_XML = os.environ.get('UNISENSE_CONFIG_XML', '/conf/config.xml')
 ZONE_TAB = os.environ.get('UNISENSE_ZONE_TAB', '/usr/share/zoneinfo/zone.tab')
+# every country the firewall has talked to: written at most once a minute
+HISTORY_FILE = os.environ.get('UNISENSE_HISTORY', os.path.join(DB_DIR, 'trafficmap-history.json'))
+HISTORY_FLUSH = int(os.environ.get('UNISENSE_HISTORY_FLUSH', '60'))  # seconds between writes
+HISTORY_KEEP = 90 * 86400   # forget countries not seen for 90 days
 
 # record layouts (big-endian, so byte order == numeric order)
 GEO4 = struct.Struct('>II2s')            # start, end, country
@@ -420,21 +425,59 @@ def timezone_country():
     return ''
 
 
-def cmd_flows():
+class Locked:
+    """serialise the page's polls and the cron sampler (they share the cache)"""
+
+    def __enter__(self):
+        try:
+            self.f = open(CACHE_FILE + '.lock', 'a')
+            fcntl.flock(self.f, fcntl.LOCK_EX)
+        except OSError:
+            self.f = None
+        return self
+
+    def __exit__(self, *a):
+        if self.f:
+            fcntl.flock(self.f, fcntl.LOCK_UN)
+            self.f.close()
+
+
+def load_json(path, default):
+    try:
+        with open(path) as f:
+            v = json.load(f)
+        return v if isinstance(v, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+def load_history():
+    h = load_json(HISTORY_FILE, {})
+    h.setdefault('since', 0)
+    h.setdefault('c', {})
+    return h
+
+
+def snapshot():
+    """
+    Read the state table once and compare it with the previous snapshot:
+    rates for the live view, and per-country byte/connection counts added to
+    the history. Bytes are counted from the previous snapshot's counters, so a
+    connection is never counted twice; connections that start and finish
+    between two snapshots are missed (the cron sampler runs every minute).
+    """
     now = time.time()
     own = local_addresses()
     conns = parse_states(read_states(), own)
     look = Lookup()
 
-    try:
-        with open(CACHE_FILE) as f:
-            prev = json.load(f)
-    except (OSError, ValueError):
-        prev = {}
+    prev = load_json(CACHE_FILE, {})
     prev_ts = prev.get('ts', 0)
     prev_c = prev.get('c', {})
     dt = now - prev_ts if prev_ts else 0
     valid = 0.5 < dt < 120
+    pending = prev.get('p', {})          # history not yet written to disk
+    flushed = prev.get('f', 0)
 
     countries = {}
     totals = {'in_bps': 0.0, 'out_bps': 0.0, 'conns': 0, 'bytes_in': 0, 'bytes_out': 0}
@@ -447,9 +490,20 @@ def cmd_flows():
                                  'bytes_in': 0, 'bytes_out': 0, '_asn': {}}
         din = dup = 0.0
         p = prev_c.get(key)
-        if valid and p is not None and down >= p[0] and up >= p[1]:
-            din = (down - p[0]) * 8.0 / dt
-            dup = (up - p[1]) * 8.0 / dt
+        if p is not None and down >= p[0] and up >= p[1]:
+            gin, gout, new = down - p[0], up - p[1], 0
+            if valid:
+                din = gin * 8.0 / dt
+                dup = gout * 8.0 / dt
+        else:
+            gin, gout, new = down, up, 1
+        if look.ready and (gin or gout or new):
+            h = pending.get(cc)
+            if h is None:
+                h = pending[cc] = [0, 0, 0]
+            h[0] += gin
+            h[1] += gout
+            h[2] += new
         c['in_bps'] += din
         c['out_bps'] += dup
         c['conns'] += 1
@@ -467,6 +521,51 @@ def cmd_flows():
         totals['conns'] += 1
         totals['bytes_in'] += down
         totals['bytes_out'] += up
+
+    # countries seen in this snapshot are "last seen now", even when idle
+    for cc in countries:
+        if look.ready:
+            pending.setdefault(cc, [0, 0, 0])
+    seen = sorted(countries)
+
+    if now - flushed >= HISTORY_FLUSH:
+        if merge_history(pending, seen if look.ready else [], now):
+            pending, flushed = {}, now
+    try:
+        write_atomic(CACHE_FILE, json.dumps({'ts': now, 'c': {k: v[:2] for k, v in conns.items()},
+                                             'p': pending, 'f': flushed, 's': seen}))
+    except OSError:
+        pass
+    return now, dt, valid, countries, totals, own, look
+
+
+def merge_history(pending, seen, now):
+    h = load_history()
+    if not h['since']:
+        h['since'] = int(now)
+    for cc, (bin_, bout, nc) in pending.items():
+        e = h['c'].get(cc)
+        if e is None:
+            e = h['c'][cc] = [0, 0, 0, int(now), int(now)]
+        e[0] += int(bin_)
+        e[1] += int(bout)
+        e[2] += int(nc)
+        e[4] = int(now)
+    for cc in seen:
+        if cc in h['c']:
+            h['c'][cc][4] = int(now)
+    h['c'] = {cc: e for cc, e in h['c'].items() if now - e[4] < HISTORY_KEEP}
+    try:
+        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+        write_atomic(HISTORY_FILE, json.dumps(h, separators=(',', ':')))
+        return True
+    except OSError:
+        return False
+
+
+def cmd_flows():
+    with Locked():
+        now, dt, valid, countries, totals, own, look = snapshot()
 
     for c in countries.values():
         asns = sorted(c.pop('_asn').values(), key=lambda x: (x['in_bps'] + x['out_bps'], x['bytes']), reverse=True)
@@ -487,11 +586,6 @@ def cmd_flows():
     if not home:
         home = timezone_country()
 
-    try:
-        write_atomic(CACHE_FILE, json.dumps({'ts': now, 'c': {k: v[:2] for k, v in conns.items()}}))
-    except OSError:
-        pass
-
     meta = load_meta()
     out = {
         'ok': True,
@@ -504,6 +598,55 @@ def cmd_flows():
                             reverse=True),
     }
     print(json.dumps(out, separators=(',', ':')))
+    return 0
+
+
+def cmd_sample():
+    """cron, every minute: keep the history going while nobody has the page open"""
+    with Locked():
+        snapshot()
+    return 0
+
+
+def cmd_history():
+    """every country seen since the history started, newest data included"""
+    h = load_history()
+    cache = load_json(CACHE_FILE, {})
+    now = int(time.time())
+    merged = {cc: list(e) for cc, e in h['c'].items()}
+    for cc, (bin_, bout, nc) in cache.get('p', {}).items():
+        e = merged.get(cc)
+        if e is None:
+            e = merged[cc] = [0, 0, 0, int(cache.get('ts', now)), int(cache.get('ts', now))]
+        e[0] += int(bin_)
+        e[1] += int(bout)
+        e[2] += int(nc)
+        e[4] = max(e[4], int(cache.get('ts', now)))
+    out = {
+        'ok': True,
+        'ts': now,
+        'since': h['since'] or (int(cache['ts']) if cache.get('ts') and merged else 0),
+        'countries': sorted(({'cc': cc, 'bytes_in': e[0], 'bytes_out': e[1], 'conns': e[2], 'first': e[3], 'last': e[4]}
+                             for cc, e in merged.items()), key=lambda c: c['bytes_in'] + c['bytes_out'], reverse=True),
+    }
+    print(json.dumps(out, separators=(',', ':')))
+    return 0
+
+
+def cmd_reset():
+    try:
+        os.unlink(HISTORY_FILE)
+    except OSError:
+        pass
+    with Locked():
+        cache = load_json(CACHE_FILE, {})
+        cache['p'] = {}
+        cache['f'] = time.time()
+        try:
+            write_atomic(CACHE_FILE, json.dumps(cache))
+        except OSError:
+            pass
+    print(json.dumps({'ok': True}))
     return 0
 
 
@@ -529,7 +672,13 @@ if __name__ == '__main__':
         sys.exit(cmd_update('--force' in sys.argv))
     elif cmd == 'flows':
         sys.exit(cmd_flows())
+    elif cmd == 'sample':
+        sys.exit(cmd_sample())
+    elif cmd == 'history':
+        sys.exit(cmd_history())
+    elif cmd == 'reset':
+        sys.exit(cmd_reset())
     elif cmd == 'status':
         sys.exit(cmd_status())
-    print('usage: trafficmap.py update [--force] | flows | status')
+    print('usage: trafficmap.py update [--force] | flows | sample | history | reset | status')
     sys.exit(2)

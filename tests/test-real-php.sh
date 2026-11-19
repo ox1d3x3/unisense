@@ -70,7 +70,7 @@ chmod +x "$S/service" "$S/configctl"
 export UNISENSE_SERVICE="$S/service" UNISENSE_CONFIGCTL="$S/configctl"
 # the cron model validates commands against configd's action list; core
 # caches that list here until configd restarts (no socket here: never stale)
-printf '%s' '{"unisense geoip update": {"description": "UniSense: update IP-to-country databases (Traffic Map)"}, "firmware poll": {"description": "Firmware update check"}}' \
+printf '%s' '{"unisense geoip update": {"description": "UniSense: update IP-to-country databases (Traffic Map)"}, "unisense trafficmap sample": {"description": "UniSense: record Traffic Map history (every minute)"}, "firmware poll": {"description": "Firmware update check"}}' \
     > /var/lib/php/tmp/configdmodelfield.data
 SETUPCRON=/usr/local/opnsense/scripts/unisense/setup_cron.php
 SETTHEME=/usr/local/opnsense/scripts/unisense/settheme.php
@@ -87,13 +87,14 @@ t "backup made" '[ -n "$(ls /conf/backup)" ]'
 t "nothing else in the config changed" 'stable "$S/config.orig.xml" | diff -q - "$(stable /conf/config.xml > "$S/now.xml"; echo "$S/now.xml")" >/dev/null'
 t "network map config section created" 'grep -q "<unisense>" /conf/config.xml'
 
-echo "daily IP database update (real cron model)"
+echo "Traffic Map cron jobs (real cron model)"
 t "configd restarted for the new actions" 'grep -q "service configd restart" "$S/calls"'
 t "cron job saved" 'grep -q "<command>unisense geoip update</command>" /conf/config.xml && grep -q "<origin>UniSense</origin>" /conf/config.xml'
-t "scheduled at 01:00" '[ "$("$PHP" "$SETUPCRON" 2>&1)" = "0 1 * * * unisense geoip update" ]' show
+t "IP database at 01:00" '"$PHP" "$SETUPCRON" 2>&1 | grep -qx "0 1 \* \* \* unisense geoip update"' show
+t "history sampled every minute" '"$PHP" "$SETUPCRON" 2>&1 | grep -qx "\* \* \* \* \* unisense trafficmap sample"' show
 t "crontab regenerated" 'grep -q "configctl cron restart" "$S/calls"'
 t "first download started in the background" 'grep -q "configctl -dq unisense geoip update" "$S/calls"'
-t "second install keeps the existing job" '[ "$("$PHP" "$SETUPCRON" install 2>&1)" = exists ] && [ "$(grep -c "<command>unisense geoip update</command>" /conf/config.xml)" = 1 ]'
+t "second install keeps the existing jobs" '[ "$("$PHP" "$SETUPCRON" install 2>&1)" = exists ] && [ "$(grep -c "<command>unisense geoip update</command>" /conf/config.xml)" = 1 ] && [ "$(grep -c "<command>unisense trafficmap sample</command>" /conf/config.xml)" = 1 ]'
 
 echo "settheme.php"
 t "prints the current theme" '[ "$("$PHP" "$SETTHEME" 2>&1)" = unisense ]'
@@ -138,7 +139,7 @@ out="$(UNISENSE_PREFIX=/ UNISENSE_PHP="$PHP" sh install.sh --uninstall --yes 2>&
 t "uninstall finishes without warnings" '! printf "%s" "$out" | grep -q -E "^ ! |Fatal|Warning|Deprecated"' show
 t "theme switched back to opnsense" '[ "$(theme)" = opnsense ]'
 t "device labels kept in config" 'grep -q "Kitchen speaker" /conf/config.xml'
-t "cron job removed" '! grep -q "unisense geoip update" /conf/config.xml'
+t "cron jobs removed" '! grep -q "unisense geoip update" /conf/config.xml && ! grep -q "unisense trafficmap sample" /conf/config.xml'
 
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

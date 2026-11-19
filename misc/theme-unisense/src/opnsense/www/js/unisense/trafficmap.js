@@ -160,6 +160,12 @@
         timer: null,
         flows: {},            /* cc -> animated flow */
         hist: [],             /* recent [download, upload] totals for the sparklines */
+        view: 'top',          /* table: 'top' (top 20) or 'all' (every country seen) */
+        sort: { key: 'rate', dir: -1 },
+        hsort: { key: 'htot', dir: -1 },
+        query: '',
+        history: null,        /* every country seen (trafficmap.py history) */
+        histAt: 0,
         colors: null
     };
 
@@ -187,8 +193,18 @@
             '<span class="utm-legend-scale"><i class="utm-l1"></i><i class="utm-l2"></i><i class="utm-l3"></i><i class="utm-l4"></i><i class="utm-l5"></i></span>' +
             '</div></div>' +
             '<div class="utm-card">' +
-            '<div class="utm-card-head"><b>' + esc(t('top', 'Top 20 countries')) + '</b><small data-utm="top-sub"></small></div>' +
-            '<div class="utm-table-wrap" data-utm="table"></div></div>' +
+            '<div class="utm-card-head">' +
+            '<div class="utm-tabs" role="tablist">' +
+            '<button type="button" role="tab" class="utm-tab is-active" aria-selected="true" data-utm-view="top">' + esc(t('top', 'Top 20 countries')) + '</button>' +
+            '<button type="button" role="tab" class="utm-tab" aria-selected="false" data-utm-view="all">' + esc(t('allCountries', 'All countries')) +
+            ' <span class="utm-tab-count" data-utm="all-count"></span></button></div>' +
+            '<small data-utm="top-sub"></small>' +
+            '<label class="utm-search" hidden data-utm="search-wrap"><i class="fa fa-search" aria-hidden="true"></i>' +
+            '<input type="search" data-utm="search" placeholder="' + esc(t('search', 'Search countries')) + '" aria-label="' + esc(t('search', 'Search countries')) + '"></label>' +
+            '</div>' +
+            '<div class="utm-table-wrap" data-utm="table"></div>' +
+            '<div class="utm-table-wrap" data-utm="history" hidden></div>' +
+            '<div class="utm-hist-note" data-utm="hist-note" hidden></div></div>' +
             '<div class="utm-attrib">IP to Country Lite by <a href="https://db-ip.com" target="_blank" rel="noopener">DB-IP</a> (CC BY 4.0) · ' +
             'networks by <a href="https://iptoasn.com" target="_blank" rel="noopener">iptoasn.com</a> · ' +
             'map: <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> · ' +
@@ -203,6 +219,22 @@
             setLive(!S.live);
         });
         root.addEventListener('click', onClick);
+        root.addEventListener('keydown', function (e) {
+            var th = e.target.closest && e.target.closest('[data-utm-sort]');
+            if (th && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                onClick({ target: th });
+            }
+        });
+        var search = q('search');
+        var searchTimer = 0;
+        search.addEventListener('input', function () {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function () {
+                S.query = search.value.trim();
+                renderTable();
+            }, 120);
+        });
         var svg = q('svg');
         svg.addEventListener('pointermove', onHover);
         svg.addEventListener('pointerleave', function () {
@@ -1047,17 +1079,58 @@
     function buildTable() {
         var wrap = q('table');
         wrap.innerHTML = '<table class="utm-table"><thead><tr>' +
-            '<th class="utm-c-rank">#</th><th>' + esc(t('country', 'Country')) + '</th>' +
-            '<th class="utm-c-num">&darr; ' + esc(t('download', 'Download')) + '</th>' +
-            '<th class="utm-c-num">&uarr; ' + esc(t('upload', 'Upload')) + '</th>' +
-            '<th class="utm-c-share"></th>' +
-            '<th class="utm-c-num">' + esc(t('connections', 'Connections')) + '</th>' +
-            '<th class="utm-c-num utm-c-hide">' + esc(t('transferred', 'Transferred')) + '</th>' +
+            '<th class="utm-c-rank">#</th>' + sortTh('name', t('country', 'Country'), '') +
+            sortTh('dl', '&darr; ' + esc(t('download', 'Download')), 'utm-c-num', true) +
+            sortTh('ul', '&uarr; ' + esc(t('upload', 'Upload')), 'utm-c-num', true) +
+            sortTh('rate', esc(t('share', 'Share')), 'utm-c-share', true) +
+            sortTh('conns', esc(t('connections', 'Connections')), 'utm-c-num', true) +
+            sortTh('bytes', esc(t('transferred', 'Transferred')), 'utm-c-num utm-c-hide', true) +
             '<th class="utm-c-hide">' + esc(t('networks', 'Networks')) + '</th>' +
             '</tr></thead><tbody></tbody></table>' +
             '<div class="utm-empty" hidden>' + esc(t('idle', 'No traffic to other countries right now.')) + '</div>';
         wrap.__utmHtml = null;
         table = { el: wrap.firstChild, body: wrap.querySelector('tbody'), empty: wrap.lastChild, rows: {} };
+    }
+
+    function sortTh(key, label, cls, raw) {
+        return '<th class="utm-sortable ' + cls + '" data-utm-sort="' + key + '" tabindex="0" aria-sort="none">' +
+            '<span>' + (raw ? label : esc(label)) + '</span><i class="utm-sort-ico" aria-hidden="true"></i></th>';
+    }
+
+    var SORTS = {
+        name: function (c) { return countryName(c.cc).toLowerCase(); },
+        dl: function (c) { return c.in_bps; },
+        ul: function (c) { return c.out_bps; },
+        rate: function (c) { return c.in_bps + c.out_bps + (c.bytes_in + c.bytes_out) * 1e-9; },
+        conns: function (c) { return c.conns; },
+        bytes: function (c) { return c.bytes_in + c.bytes_out; },
+        /* history table */
+        last: function (c) { return c.last; },
+        hin: function (c) { return c.bytes_in; },
+        hout: function (c) { return c.bytes_out; },
+        htot: function (c) { return c.bytes_in + c.bytes_out; },
+        now: function (c) { return liveRate(c.cc); }
+    };
+
+    function liveRate(cc) {
+        var l = S.liveBy && S.liveBy[cc];
+        return l ? l.in_bps + l.out_bps : 0;
+    }
+
+    function sorted(list, by) {
+        by = by || S.sort;
+        var get = SORTS[by.key] || SORTS.rate;
+        var dir = by.dir;
+        return list.slice().sort(function (a, b) {
+            var x = get(a), y = get(b);
+            if (x < y) {
+                return -dir;
+            }
+            if (x > y) {
+                return dir;
+            }
+            return a.cc < b.cc ? -1 : 1;
+        });
     }
 
     function makeRow(cc) {
@@ -1094,11 +1167,35 @@
     }
 
     function renderTable() {
+        var all = S.view === 'all';
+        q('table').hidden = all;
+        q('history').hidden = !all;
+        q('hist-note').hidden = !all;
+        S.liveBy = {};
+        ((S.data && S.data.countries) || []).forEach(function (c) {
+            S.liveBy[c.cc] = c;
+        });
+        if (all) {
+            renderHistory();
+            return;
+        }
         if (!table || !table.el.isConnected) {
             buildTable();
         }
         var d = S.data;
-        var list = ((d && d.countries) || []).slice(0, TOP);
+        var every = ((d && d.countries) || []).filter(function (c) {
+            return c.conns > 0 || c.in_bps + c.out_bps > 0;
+        });
+        /* rank = place by traffic, whatever the table is sorted by */
+        var rankOf = {};
+        every.forEach(function (c, i) {
+            rankOf[c.cc] = i + 1;
+        });
+        var list = sorted(every.slice(0, TOP));
+        table.el.querySelectorAll('[data-utm-sort]').forEach(function (th) {
+            var on = th.getAttribute('data-utm-sort') === S.sort.key;
+            th.setAttribute('aria-sort', on ? (S.sort.dir > 0 ? 'ascending' : 'descending') : 'none');
+        });
         var tot = (d && d.totals) || {};
         var totalRate = (tot.in_bps || 0) + (tot.out_bps || 0);
         var totalBytes = (tot.bytes_in || 0) + (tot.bytes_out || 0);
@@ -1108,7 +1205,7 @@
 
         /* FLIP: remember where each row was */
         var before = {};
-        var animate = !reduceMotion() && typeof Element.prototype.animate === 'function';
+        var animate = list.length <= 40 && !reduceMotion() && typeof Element.prototype.animate === 'function';
         if (animate) {
             Object.keys(table.rows).forEach(function (cc) {
                 before[cc] = table.rows[cc].tr.getBoundingClientRect().top;
@@ -1122,7 +1219,7 @@
             var r = table.rows[c.cc] || (table.rows[c.cc] = makeRow(c.cc));
             var rate = c.in_bps + c.out_bps;
             var share = totalRate > 0 ? rate / totalRate : (totalBytes > 0 ? (c.bytes_in + c.bytes_out) / totalBytes : 0);
-            put(r, 'rank', r.rank, String(i + 1));
+            put(r, 'rank', r.rank, String(rankOf[c.cc] || i + 1));
             r.home.hidden = d.home !== c.cc;
             put(r, 'dl', r.dl, fmtBits(c.in_bps));
             put(r, 'ul', r.ul, fmtBits(c.out_bps));
@@ -1190,11 +1287,178 @@
         }
     }
 
+    /* ------------------------------------------------- all countries (history) */
+    var hist = null;
+
+    function buildHistory() {
+        var wrap = q('history');
+        wrap.innerHTML = '<table class="utm-table utm-hist"><thead><tr>' +
+            '<th class="utm-c-rank">#</th>' + sortTh('name', t('country', 'Country'), '') +
+            sortTh('now', esc(t('now', 'Now')), 'utm-c-num', true) +
+            sortTh('hin', '&darr; ' + esc(t('downloaded', 'Downloaded')), 'utm-c-num', true) +
+            sortTh('hout', '&uarr; ' + esc(t('uploaded', 'Uploaded')), 'utm-c-num', true) +
+            sortTh('htot', esc(t('share', 'Share')), 'utm-c-share', true) +
+            sortTh('conns', esc(t('connections', 'Connections')), 'utm-c-num utm-c-hide', true) +
+            sortTh('last', esc(t('lastSeen', 'Last seen')), 'utm-c-num', true) +
+            '</tr></thead><tbody></tbody></table>' +
+            '<div class="utm-empty" hidden></div>';
+        hist = { el: wrap.firstChild, body: wrap.querySelector('tbody'), empty: wrap.lastChild, rows: {} };
+    }
+
+    function histRow(cc) {
+        var tr = document.createElement('tr');
+        tr.className = 'utm-row utm-hist-row';
+        tr.setAttribute('data-cc', cc);
+        tr.innerHTML = '<td class="utm-c-rank"></td>' +
+            '<td><span class="utm-c-country">' + flag(cc) + '<span>' + esc(countryName(cc)) + '</span></span></td>' +
+            '<td class="utm-c-num utm-c-now"></td><td class="utm-c-num utm-dl"></td><td class="utm-c-num utm-ul"></td>' +
+            '<td class="utm-c-share"><span class="utm-bar"><i></i></span><small></small></td>' +
+            '<td class="utm-c-num utm-c-hide"></td><td class="utm-c-num utm-c-last"></td>';
+        var td = tr.children;
+        return { tr: tr, rank: td[0], now: td[2], dl: td[3], ul: td[4], bar: td[5].querySelector('i'), pct: td[5].querySelector('small'),
+            conns: td[6], last: td[7], cache: {} };
+    }
+
+    function renderHistory() {
+        if (!hist || !hist.el.isConnected) {
+            buildHistory();
+        }
+        var h = S.history;
+        var every = (h && h.countries) || [];
+        setHtml(q('all-count'), every.length ? String(every.length) : '');
+        var total = 0;
+        var rankOf = {};
+        every.forEach(function (c, i) {
+            total += c.bytes_in + c.bytes_out;
+            rankOf[c.cc] = i + 1;
+        });
+        var list = every;
+        if (S.query) {
+            var qy = S.query.toLowerCase();
+            list = list.filter(function (c) {
+                return countryName(c.cc).toLowerCase().indexOf(qy) !== -1 || c.cc.toLowerCase() === qy;
+            });
+        }
+        list = sorted(list, S.hsort);
+        hist.el.querySelectorAll('[data-utm-sort]').forEach(function (th) {
+            var on = th.getAttribute('data-utm-sort') === S.hsort.key;
+            th.setAttribute('aria-sort', on ? (S.hsort.dir > 0 ? 'ascending' : 'descending') : 'none');
+        });
+        hist.el.hidden = !list.length;
+        hist.empty.hidden = !!list.length;
+        hist.empty.textContent = !h ? t('loading', 'Loading…') : S.query ? t('noMatch', 'No country matches your search.') :
+            t('noHistory', 'No countries recorded yet.');
+
+        var keep = {};
+        list.forEach(function (c, i) {
+            keep[c.cc] = true;
+            var r = hist.rows[c.cc] || (hist.rows[c.cc] = histRow(c.cc));
+            var rate = liveRate(c.cc);
+            put(r, 'rank', r.rank, String(rankOf[c.cc]));
+            putHtml(r, 'now', r.now, rate > 0 ? '<span class="utm-now-dot"></span>' + esc(fmtBits(rate)) : '<span class="utm-muted">&mdash;</span>');
+            put(r, 'dl', r.dl, fmtBytes(c.bytes_in));
+            put(r, 'ul', r.ul, fmtBytes(c.bytes_out));
+            var share = total > 0 ? (c.bytes_in + c.bytes_out) / total : 0;
+            var pct = share * 100;
+            var label = pct >= 1 || pct === 0 ? Math.round(pct) + '%' : '<1%';
+            if (r.cache.share !== label) {
+                r.cache.share = label;
+                r.bar.style.transform = 'scaleX(' + Math.max(0.01, share).toFixed(3) + ')';
+                r.pct.textContent = label;
+            }
+            put(r, 'conns', r.conns, String(c.conns));
+            put(r, 'last', r.last, S.liveBy[c.cc] ? t('justNow', 'now') : ago(c.last));
+            r.tr.classList.toggle('is-live', rate > 0);
+            r.tr.classList.toggle('is-hover', S.hover === c.cc);
+            if (hist.body.children[i] !== r.tr) {
+                hist.body.insertBefore(r.tr, hist.body.children[i] || null);
+            }
+        });
+        Object.keys(hist.rows).forEach(function (cc) {
+            if (!keep[cc]) {
+                hist.rows[cc].tr.remove();
+                delete hist.rows[cc];
+            }
+        });
+        var since = h && h.since ? new Date(h.since * 1000) : null;
+        setHtml(q('hist-note'), (since ? esc(t('since', 'Recorded since')) + ' ' + esc(since.toLocaleDateString()) + ' · ' : '') +
+            esc(t('histHow', 'sampled every minute, also while this page is closed')) +
+            ' <button type="button" class="btn btn-link btn-xs" data-utm-action="reset">' +
+            esc(S.resetArmed ? t('resetConfirm', 'Click again to clear the history') : t('reset', 'Clear history')) + '</button>');
+    }
+
+    function loadHistory() {
+        S.histAt = Date.now();
+        return fetchJson('/api/unisense/trafficmap/history').then(function (d) {
+            if (d && d.ok) {
+                S.history = d;
+            }
+            if (S.view === 'all') {
+                renderTable();
+            } else {
+                setHtml(q('all-count'), S.history && S.history.countries.length ? String(S.history.countries.length) : '');
+            }
+        });
+    }
+
+    function setView(v) {
+        S.view = v;
+        root.querySelectorAll('[data-utm-view]').forEach(function (b) {
+            var on = b.getAttribute('data-utm-view') === v;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-selected', String(on));
+        });
+        q('search-wrap').hidden = v !== 'all';
+        renderTable();
+        if (v === 'all' && Date.now() - S.histAt > 5000) {
+            loadHistory();
+        }
+    }
+
     function onClick(e) {
+        var tab = e.target.closest && e.target.closest('[data-utm-view]');
+        if (tab) {
+            setView(tab.getAttribute('data-utm-view'));
+            return;
+        }
+        var stat = e.target.closest && e.target.closest('[data-utm-stat="cc"]');
+        if (stat) {
+            setView('all');
+            q('table').scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' });
+            return;
+        }
+        var th = e.target.closest && e.target.closest('[data-utm-sort]');
+        if (th) {
+            var key = th.getAttribute('data-utm-sort');
+            var cur = S.view === 'all' ? S.hsort : S.sort;
+            var next = cur.key === key ? { key: key, dir: -cur.dir } : { key: key, dir: key === 'name' ? 1 : -1 };
+            if (S.view === 'all') {
+                S.hsort = next;
+            } else {
+                S.sort = next;
+            }
+            renderTable();
+            return;
+        }
         var btn = e.target.closest && e.target.closest('[data-utm-action]');
         if (btn) {
-            if (btn.getAttribute('data-utm-action') === 'update') {
+            var act = btn.getAttribute('data-utm-action');
+            if (act === 'update') {
                 startUpdate();
+            } else if (act === 'reset') {
+                if (!S.resetArmed) {
+                    S.resetArmed = true;
+                    setTimeout(function () {
+                        S.resetArmed = false;
+                        if (S.view === 'all') {
+                            renderTable();
+                        }
+                    }, 4000);
+                    renderTable();
+                } else {
+                    S.resetArmed = false;
+                    post('/api/unisense/trafficmap/reset').then(loadHistory);
+                }
             }
             return;
         }
@@ -1303,6 +1567,9 @@
                 S.failed = true;
             }
             renderAll();
+            if (S.view === 'all' ? Date.now() - S.histAt > 15000 : !S.histAt) {
+                loadHistory();
+            }
             if (S.live) {
                 /* the first call only sets the baseline: ask again soon */
                 S.timer = setTimeout(poll, d && d.ok && !d.interval ? 1200 : POLL_MS);

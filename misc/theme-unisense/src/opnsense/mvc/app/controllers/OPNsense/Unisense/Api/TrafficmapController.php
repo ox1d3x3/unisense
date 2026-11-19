@@ -56,6 +56,25 @@ class TrafficmapController extends ApiControllerBase
     }
 
     /**
+     * every country seen since the history started (bytes, connections, last seen)
+     */
+    public function historyAction()
+    {
+        return $this->runJson('unisense trafficmap history', 30);
+    }
+
+    /**
+     * start the country history afresh
+     */
+    public function resetAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed', 'error' => 'POST required'];
+        }
+        return $this->runJson('unisense trafficmap reset', 30);
+    }
+
+    /**
      * IP database status
      */
     public function statusAction()
