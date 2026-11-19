@@ -556,10 +556,16 @@
   padding-right: 3px !important;
   padding-left: 3px !important;
   white-space: nowrap;
+  // flex drops the spaces between the inline buttons (about 4px each)
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  &[style*="text-align: center"] { justify-content: center; }
+  &[style*="text-align: right"] { justify-content: flex-end; }
 }
 .tabulator .tabulator-row .tabulator-cell > .btn.btn-xs {
   min-width: 24px;
-  margin: 0 1px;
+  margin: 0;
   padding-right: 4px;
   padding-left: 4px;
 }
