@@ -64,3 +64,44 @@
     input[size] { width: 100%; }
   }
 }
+
+// MVC forms and edit dialogs (form_input_tr.volt: label | field | help in a
+// fixed 25/40/35 table): on phones the three columns cut labels to
+// "Interfac" and squeeze fields to 110px — stack them instead, label on top,
+// field full width, help below
+@media (max-width: 767px) {
+  table.table:has(> tbody > tr[id^="row_"]) {
+    display: block;
+    table-layout: auto !important;
+    > colgroup { display: none; }
+    > thead, > tbody { display: block; }
+    > thead > tr { display: block; }
+  }
+  tr[id^="row_"] {
+    display: block;
+    padding: 4px 0 8px;
+    border-top: 1px solid var(--us-line-2);
+
+    > td {
+      display: block;
+      width: auto !important;
+      border-top: 0 !important;
+      padding: 3px 12px !important;
+    }
+    > td:first-child { padding-top: 8px !important; }
+    > td:nth-child(3):not(:has(.help-block:not(:empty))) { display: none; }
+    > td .form-control,
+    > td .bootstrap-select:not(.input-group-btn),
+    > td > select { width: 100% !important; max-width: none !important; }
+  }
+  // an on/off setting: label and switch on one line, like UniFi OS
+  // (falls back to stacked as soon as "full help" shows text under the switch)
+  tr[id^="row_"]:has(> td:nth-child(2) > input[type="checkbox"]:first-child):not(:has(> td:nth-child(2) > :not(input[type="checkbox"]):not(.hidden))) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    > td:first-child { padding-bottom: 8px !important; }
+    > td:nth-child(2) { padding-top: 8px !important; }
+    > td:nth-child(3) { grid-column: 1 / -1; }
+  }
+}

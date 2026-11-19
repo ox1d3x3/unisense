@@ -11,10 +11,26 @@
   margin-right: 0;
 }
 
+// plain tables (Top talkers, Network Insight, DNS overview ...): long values
+// such as ISO timestamps may break, so a table never pushes the page wider
+// than the window (overflow-wrap: anywhere also lowers the min-content width,
+// which is what auto table layout sizes columns by)
+.content-box table.table:not(.tabulator-table) > tbody > tr > td,
+.content-box table.table:not(.tabulator-table) > thead > tr > th {
+  overflow-wrap: anywhere;
+}
+
+// bare text inputs in such tables (filter rows) take their cell's width
+// instead of their intrinsic ~180px, so the row can shrink with the window
+.content-box table.table:not(.tabulator-table) td > input[type="text"]:not([size]) {
+  width: 100%;
+  min-width: 64px;
+}
+
 // plain wide tables scroll inside their card on small screens instead of
 // widening the page
 @media (max-width: 767px) {
-  .content-box table.table:not(.opnsense_standard_table_form):not(.tabulator-table) {
+  .content-box table.table:not(.opnsense_standard_table_form):not(.tabulator-table):not(:has(> tbody > tr[id^="row_"])) {
     display: block;
     max-width: 100%;
     overflow-x: auto;
