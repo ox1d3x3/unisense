@@ -35,6 +35,8 @@ jobs:
         run: sh tests/test-install.sh
       - name: Traffic Map backend (databases, pf states, rates)
         run: python3 tests/test-trafficmap.py
+      - name: Shield backend (lists, pf tables, block log, alerts)
+        run: python3 tests/test-shield.py
       - name: World map data is current
         run: node scripts/make-worldmap.mjs --check
       - name: Package
@@ -66,7 +68,7 @@ jobs:
           extensions: phalcon5, simplexml, dom, json, gettext
           tools: none
           coverage: none
-      - name: Installer PHP steps for real (settheme, migrations, Network Map model)
+      - name: Installer PHP steps for real (settheme, migrations, models, Shield firewall rules)
         run: sudo env "PATH=$PATH" sh tests/test-real-php.sh "$RUNNER_TEMP/core"
       - uses: actions/setup-python@v7
         with:

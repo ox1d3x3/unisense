@@ -1,5 +1,13 @@
-# Traffic Map: remove the daily IP database update job while its helper still exists
+# remove the scheduled jobs while their helper still exists
 if [ -x /usr/local/opnsense/scripts/unisense/setup_cron.php ]; then
 	/usr/local/opnsense/scripts/unisense/setup_cron.php remove >/dev/null 2>&1 && configctl cron restart >/dev/null 2>&1
+fi
+# Shield: empty its tables, then take its rules and aliases out of the firewall
+configctl unisense shield clear >/dev/null 2>&1
+if [ -x /usr/local/opnsense/scripts/unisense/setup_shield.php ]; then
+	if [ "$(/usr/local/opnsense/scripts/unisense/setup_shield.php remove 2>/dev/null)" = "changed" ]; then
+		configctl template reload OPNsense/Filter >/dev/null 2>&1
+		configctl filter reload >/dev/null 2>&1
+	fi
 fi
 true

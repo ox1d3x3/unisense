@@ -65,6 +65,14 @@ UniSense survives OPNsense firmware updates: it checks itself after every update
     <td align="center"><sub><b>Top 20 countries and their networks</b></sub></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/screenshots/shield-dark.png" alt="Shield"></td>
+    <td width="50%"><img src="docs/screenshots/trafficmap-block.png" alt="Blocking a country from the Traffic Map"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Shield: threat lists, blocks and alerts</b></sub></td>
+    <td align="center"><sub><b>Block a country right from its connections</b></sub></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/screenshots/grid-light.png" alt="A data grid page"></td>
     <td width="50%"><img src="docs/screenshots/dialog-light.png" alt="An edit dialog"></td>
   </tr>
@@ -124,6 +132,13 @@ UniSense survives OPNsense firmware updates: it checks itself after every update
 - **Connections**: open a country (or the *Connections* card for everything) to see each connection — which device, the remote address and port, the service (HTTPS, DNS, NTP, Steam, …), the network behind it, live rate, data transferred and how long it has been open; filterable
 - Hover a country for details, click a row for its top networks, pause/resume
 - IP-to-country data is downloaded to the firewall and refreshed daily at 01:00 — lookups never leave your network
+
+**Shield** (Lobby → Shield)
+- **Block countries** from the Traffic Map (one click on a country's connections) or the Shield page: connections from them are dropped and your devices get an instant refusal, so nothing hangs; open connections end straight away
+- **Threat lists that update themselves** — free public feeds of botnet command servers, hijacked/criminal networks and active attackers (Spamhaus DROP, abuse.ch Feodo Tracker and SSL Blacklist, Emerging Threats, CINS Army, DShield; blocklist.de and Tor exits optional), checked every 15 minutes
+- **Alerts** when a device on your network tries to reach a known-bad address — usually the first sign of an infected device — with a red count on the menu
+- Live counters, the latest blocks, an **address check** (country, network, which lists, and VirusTotal / AbuseIPDB scores with a free API key) and a short **security checkup** of your settings
+- **Gaming-safe**: just firewall table lookups (no packet inspection, no added latency), and scanner lists only ever block inbound
 
 **Coverage**
 - Every MVC page: forms, tabs, data grids (Tabulator), edit dialogs, dropdowns, tooltips, popovers, the status dialog
@@ -240,6 +255,37 @@ Access is a separate privilege, **Lobby: Traffic Map**.
 
 ---
 
+## Shield
+
+**Lobby → Shield** blocks countries and known-bad addresses for every device on your network, and tells you when one of them tries to reach something it shouldn't.
+
+**Blocking a country.** On the Traffic Map, open a country's connections and click **Block** (it warns first if games or voice chat are using that country right now), or add it on the Shield page. Connections *from* that country are dropped; connections *to* it from your devices are refused at once (an immediate error instead of a time-out), and the ones already open are ended. Blocked countries are shaded red on the map. Countries come from the same DB-IP database as the Traffic Map, so it must be downloaded first.
+
+**Threat lists.** Switch them on with the switch on the *Threat lists* card; each list can be turned on or off:
+
+| List | What it contains | Blocks | Default |
+|---|---|---|---|
+| [Spamhaus DROP](https://www.spamhaus.org/drop/) | hijacked and criminal networks | both ways | on |
+| [abuse.ch Feodo Tracker](https://feodotracker.abuse.ch/blocklist/) | botnet command servers (Emotet, QakBot, …) | both ways | on |
+| [abuse.ch SSL Blacklist](https://sslbl.abuse.ch/blacklist/) | botnet command servers (by TLS certificate) | both ways | on |
+| [Emerging Threats](https://rules.emergingthreats.net/) compromised hosts | hosts attacking others | inbound | on |
+| [CINS Army](https://cinsscore.com/) | scanners and attackers | inbound | on |
+| [DShield](https://isc.sans.edu/) top attackers | the networks attacking the most | inbound | on |
+| [blocklist.de](https://www.blocklist.de/) | SSH/mail/web attackers, last 48 h | inbound | off |
+| [Tor exit nodes](https://www.torproject.org/) | connections from the Tor network | inbound | off |
+
+"Both ways" lists are high-confidence: your devices cannot reach them either, and every attempt becomes an **alert**. Scanner lists only block traffic coming in, so even if one wrongly lists a game server, your outgoing connections are never affected. A cron job, **UniSense: refresh the Shield threat lists**, runs every 15 minutes; botnet lists are refreshed every 15 minutes, the others hourly (Spamhaus every 6 hours, as it asks). A download that fails or looks wrong never replaces the last good copy. *Update lists now* fetches everything on demand.
+
+**What it changes in your firewall.** Shield adds three *External* aliases (`unisense_geoblock`, `unisense_threats`, `unisense_scanners`) and five floating block rules named **UniSense Shield: …**, visible under *Firewall → Rules* (*Automation* on 25.7). The rules match traffic entering any interface: from the Internet with a listed source (dropped), or from your devices to a listed destination (refused). Every rule logs, which is how the counters and alerts are made. Private addresses, the firewall's own addresses and everything on the **Never block** list are always exempt. pf empties tables at boot; UniSense fills them again automatically.
+
+**Address check.** Type any IP (or click 🔍 next to a block or connection): its country and network, the lists it is on, and whether Shield blocks it. Add a free [VirusTotal](https://www.virustotal.com/gui/join-us) or [AbuseIPDB](https://www.abuseipdb.com/register) API key under *Reputation lookups* to see their scores too (the lookup is made by the firewall, only when you click; keys stay in the configuration).
+
+**Security checkup.** A read-only look at a few settings that matter on a home firewall: HTTPS for the GUI, SSH root password login, private/bogon blocking on WAN, DNSSEC, a DNS blocklist for malware domains, the threat lists, and what is open to the whole Internet. Each item links to the page where it is set.
+
+Access is a separate privilege, **Lobby: Shield**. Uninstalling UniSense removes the Shield rules and aliases.
+
+---
+
 ## Using the theme
 
 1. The installer selects the theme for you. To switch by hand: **System → Settings → General → Theme** → **unisense** → **Save**.
@@ -253,7 +299,7 @@ Each browser keeps its own choice. To reset it, choose **System** and **Blue**, 
 fetch -o - https://raw.githubusercontent.com/ox1d3x3/unisense/main/install.sh | sh -s -- --uninstall
 ```
 
-The GUI is switched back to the default **opnsense** theme first, then every UniSense file, the IP databases and the daily update job are removed. Device names stay in the configuration, so a reinstall picks them up again.
+The GUI is switched back to the default **opnsense** theme first, then the Shield rules and aliases, every UniSense file, the IP databases and the scheduled jobs are removed. Device names stay in the configuration, so a reinstall picks them up again.
 
 ---
 
@@ -311,6 +357,24 @@ Big services (Netflix, YouTube, Cloudflare, game and update servers) answer from
 <summary><b>The Traffic Map says the database is missing.</b></summary>
 
 The first download runs in the background after installing and takes about a minute. If the firewall could not reach `iptoasn.com` or `download.db-ip.com` then, click **Download now**, or run `configctl unisense geoip update` in a shell. Errors are shown under *IP database* on the page and in the system log.
+</details>
+
+<details>
+<summary><b>Will Shield slow down my games?</b></summary>
+
+No. Shield only adds lookups in pf's address tables (a radix tree: microseconds, the same mechanism as any alias). Nothing is inspected, proxied or queued. The scanner lists only block traffic coming in, so they can never touch an outgoing game connection. The one thing to think about is **blocking a country**: game servers and matchmaking often run in nearby countries (for Australia, often Singapore or Japan). The Traffic Map warns you when games or voice chat are using a country right now.
+</details>
+
+<details>
+<summary><b>Something stopped working after I turned Shield on.</b></summary>
+
+Open **Lobby → Shield → Recent blocks**, find the address and click 🔍 to see which list or country blocked it. Then unblock the country, switch that list off, or add the address to **Never block**. To switch everything off at once, turn the *Threat lists* switch off and remove the blocked countries; the rules stay but match nothing.
+</details>
+
+<details>
+<summary><b>Why not IDS/IPS (Suricata) or a paid feed?</b></summary>
+
+They complement each other. Suricata inspects every packet, which costs CPU and some latency on small boxes; Shield is the cheap first layer that drops known-bad addresses before anything else looks at them. If you want more, OPNsense's own *Intrusion Detection* (Suricata, ET Open rules) and the CrowdSec plugin work alongside Shield.
 </details>
 
 <details>

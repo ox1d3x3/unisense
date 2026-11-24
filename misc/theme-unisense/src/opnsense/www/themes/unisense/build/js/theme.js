@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.4.1';   /* stamped from VERSION by scripts/build.mjs */
+    var VERSION = '1.5.0';   /* stamped from VERSION by scripts/build.mjs */
     var REPO_URL = 'https://github.com/ox1d3x3/unisense';
     var MODE_KEY = 'unisense.mode';
     var MENU_KEY = 'unisense.menu';     /* 'expanded': every menu section stays open */
@@ -1525,6 +1525,76 @@
         patchGauges();    /* BaseGaugeWidget.js loads before this file on the dashboard */
     } catch (e) { /* cosmetic only */ }
 
+    /*
+     * Lobby: Shield — a red count on its menu entry while a device on the
+     * network has tried to reach a known-bad address that nobody has looked at
+     * yet. Polls every two minutes, only while the tab is visible, and stops
+     * for accounts without the Shield privilege.
+     */
+    function shieldLinks() {
+        return document.querySelectorAll('a[href="/ui/unisense/shield"]');
+    }
+
+    function shieldBadge(n) {
+        /* also a dot on the section (Lobby), which the collapsed rail shows */
+        shieldLinks().forEach(function (a) {
+            var panel = a.closest('.collapse, .list-group-submenu');
+            var head = panel && panel.id ? document.querySelector('#mainmenu a[href="#' + panel.id + '"]') : null;
+            if (head) {
+                var dot = head.querySelector('.us-alert-dot');
+                if (n > 0 && !dot) {
+                    head.appendChild(el('span', { 'class': 'us-alert-dot', 'aria-hidden': 'true' }));
+                } else if (!n && dot) {
+                    dot.remove();
+                }
+            }
+        });
+        shieldLinks().forEach(function (a) {
+            var b = a.querySelector('.us-alert-badge');
+            if (n > 0) {
+                if (!b) {
+                    b = el('span', { 'class': 'us-alert-badge' });
+                    a.appendChild(b);
+                }
+                b.textContent = n > 99 ? '99+' : String(n);
+                a.setAttribute('title', n + (n === 1 ? ' new Shield alert' : ' new Shield alerts'));
+            } else if (b) {
+                b.remove();
+                a.removeAttribute('title');
+            }
+        });
+    }
+
+    function watchShield() {
+        if (!shieldLinks().length) {
+            return;
+        }
+        function tick() {
+            if (document.hidden) {
+                setTimeout(tick, 60000);
+                return;
+            }
+            fetch('/api/unisense/shield/alerts', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function (r) {
+                    if (r.status === 401 || r.status === 403) {
+                        return 'stop';
+                    }
+                    return r.ok ? r.json().catch(function () { return null; }) : null;
+                })
+                .catch(function () { return null; })
+                .then(function (d) {
+                    if (d === 'stop') {
+                        return;
+                    }
+                    if (d && d.ok) {
+                        shieldBadge(d.unseen || 0);
+                    }
+                    setTimeout(tick, 120000);
+                });
+        }
+        setTimeout(tick, 2500);
+    }
+
     function onReady() {
         installChartPlugin();
         try {
@@ -1542,6 +1612,7 @@
             applyMenuExpanded();
             mountCredit();
             enhanceLogin();
+            watchShield();
         } catch (e) { /* cosmetic only */ }
     }
 
@@ -1576,6 +1647,7 @@
             if (validAccent(a)) {
                 setAccent(a.toLowerCase());
             }
-        }
+        },
+        shieldBadge: shieldBadge
     };
 })();

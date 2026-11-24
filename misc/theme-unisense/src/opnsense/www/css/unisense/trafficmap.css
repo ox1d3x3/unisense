@@ -244,6 +244,7 @@
   color: var(--utm-text);
   font-size: 13px;
 }
+.utm .utm-search input { padding-left: 30px !important; }   /* the theme's form padding would put the text under the icon */
 .utm-search input:focus { outline: 2px solid var(--utm-accent); outline-offset: -1px; }
 /* sortable column headings */
 .utm-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
@@ -330,6 +331,8 @@
 .utm-key { width: 8px; height: 8px; border-radius: 50%; }
 .utm-key-dl { background: var(--utm-accent); }
 .utm-key-ul { background: var(--utm-ok); }
+.utm-key-blocked { border-radius: 2px; background: color-mix(in srgb, var(--us-crit, #f0383b) 55%, var(--utm-land)); }
+.utm-legend [hidden] { display: none; }
 .utm-legend-scale { margin-left: auto; gap: 0 !important; }
 .utm-legend-scale i { width: 18px; height: 8px; }
 .utm-legend-scale i:first-child { border-radius: 4px 0 0 4px; }
@@ -565,3 +568,42 @@
   vertical-align: 2px;
 }
 .utm-conns-btn { margin-top: 10px; }
+
+/* ---------------------------------------------- Shield: blocked / flagged */
+.utm-svg path.is-blocked {
+  fill: color-mix(in srgb, var(--us-crit, #f0383b) 30%, var(--utm-land)) !important;
+  stroke: color-mix(in srgb, var(--us-crit, #f0383b) 60%, var(--utm-border));
+}
+.utm-dot.is-blocked { fill: var(--us-crit, #f0383b); opacity: 1; }
+.utm-blocked-tag,
+.utm-flag-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.utm-blocked-tag { background: var(--utm-crit-soft); color: var(--utm-crit-text); }
+.utm-flag-tag.is-threat { background: var(--utm-crit-soft); color: var(--utm-crit-text); }
+.utm-flag-tag.is-scanner { background: var(--utm-warn-soft); color: var(--utm-warn-text); }
+.utm-conn.is-flagged td:first-child { box-shadow: inset 3px 0 0 var(--us-crit, #f0383b); }
+.utm-conns-head .utm-block-btn { margin-left: 8px; }
+.utm-conns-head .utm-block-btn.is-blocked { color: var(--utm-crit-text); }
+.utm-conns-note {
+  margin: -4px 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--utm-radius-sm);
+  background: var(--utm-crit-soft);
+  color: var(--utm-crit-text);
+  font-size: 12.5px;
+}
+.utm-conns-note[hidden] { display: none; }
+.utm-conns-note.is-ok { background: var(--utm-ok-soft); color: color-mix(in srgb, var(--utm-ok) 70%, var(--utm-heading)); }
+.utm-check-link { margin-left: 6px; color: var(--utm-text-3); }
+.utm-check-link:hover { color: var(--utm-accent); }

@@ -16,8 +16,18 @@ live world map, with the top 20 countries and the networks behind them.
 IP-to-country data (DB-IP Lite, iptoasn.com) is stored on the firewall and
 refreshed daily.
 
+Lobby: Shield blocks countries and known-bad addresses (free threat lists
+refreshed every 15 minutes) with pf tables and floating rules, alerts when
+a device tries to reach one, and checks addresses and the firewall's own
+security settings.
+
 Plugin Changelog
 ================
+
+1.5
+
+* Shield: country blocking, self-updating threat lists, alerts, IP check
+* Traffic Map: block a country from its connections, flagged addresses
 
 1.1
 

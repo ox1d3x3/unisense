@@ -9,7 +9,8 @@
 #      anything missing is restored from the copy the installer keeps in
 #      /var/db/unisense/keep (the same release, so nothing changes version);
 #   2. the menu and privilege caches are cleared, so the Lobby pages show up
-#      under a freshly updated core.
+#      under a freshly updated core;
+#   3. the Shield block tables are loaded again (pf empties them at boot).
 # It never changes the selected theme or your cron jobs, and does nothing
 # when everything is in place.
 #
@@ -23,6 +24,7 @@ KEEP="${PREFIX}/var/db/unisense/keep/unisense.tar.gz"
 KEEP_LIST="${PREFIX}/var/db/unisense/keep/files"
 CACHE_DIR="${PREFIX}/var/lib/php/tmp"
 SERVICE="${UNISENSE_SERVICE:-/usr/sbin/service}"
+CONFIGCTL="${UNISENSE_CONFIGCTL:-/usr/local/sbin/configctl}"
 
 log() {
 	if [ -z "$PREFIX" ] && command -v logger >/dev/null 2>&1; then
@@ -88,4 +90,10 @@ fi
 
 # new core, new menu: let OPNsense rebuild its menu and privilege caches
 rm -f "${CACHE_DIR}/opnsense_menu_cache.xml" "${CACHE_DIR}/opnsense_acl_cache.json"
+
+# Shield: pf's tables start empty after a reboot; fill them again (in the
+# background, configd may still be starting)
+if [ -f "${BASE}/scripts/unisense/shield.py" ] && [ -x "$CONFIGCTL" ]; then
+	"$CONFIGCTL" -dq unisense shield apply >/dev/null 2>&1 || true
+fi
 exit 0

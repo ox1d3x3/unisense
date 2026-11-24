@@ -259,6 +259,8 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         if path.startswith('/api/unisense/trafficmap/'):
             return self.trafficmap_api(path[len('/api/unisense/trafficmap/'):])
+        if path.startswith('/api/unisense/shield/'):
+            return self.shield_api(path[len('/api/unisense/shield/'):])
         if path.startswith('/api/unisense/networkmap/'):
             return self.labels_api(path[len('/api/unisense/networkmap/'):])
         if path in NOT_FOUND:
@@ -425,6 +427,7 @@ class Handler(SimpleHTTPRequestHandler):
                 tot[k] += c[k]
         countries.sort(key=lambda c: (c['in_bps'] + c['out_bps'], c['bytes_in'] + c['bytes_out']), reverse=True)
         return self._json({'ok': True, 'ts': int(time.time()), 'interval': 0 if first else 3.0, 'home': 'AU',
+                           'blocked': list(self.SH['countries']),
                            'db': self.tm_db(), 'totals': tot, 'countries': countries})
 
     # countries seen earlier but not right now (history only)
@@ -465,9 +468,156 @@ class Handler(SimpleHTTPRequestHandler):
                              'rport': str(port), 'service': svc, 'cc': ccc, 'asn': asn, 'org': org,
                              'bytes_in': rnd.randint(2000, 90000000), 'bytes_out': rnd.randint(500, 9000000),
                              'in_bps': int(dn / 4 * random.uniform(.5, 1.5)) if busy else 0,
-                             'out_bps': int(up / 4 * random.uniform(.5, 1.5)) if busy else 0, 'age': rnd.randint(2, 90000)})
+                             'out_bps': int(up / 4 * random.uniform(.5, 1.5)) if busy else 0, 'age': rnd.randint(2, 90000),
+                             'flag': 'threat' if (ccc == 'NL' and i == 2) else ('scanner' if (ccc == 'DE' and i == 1) else '')})
         rows.sort(key=lambda r: (r['in_bps'] + r['out_bps'], r['bytes_in'] + r['bytes_out']), reverse=True)
         return {'ok': True, 'ts': int(time.time()), 'cc': cc, 'total': len(rows), 'interval': 3.0, 'conns': rows[:300]}
+
+    # ---- Shield (scripts/unisense/shield.py output) ----
+    SH = {'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'sslbl', 'et', 'cins', 'dshield'],
+          'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0}
+    SH_FEEDS = [
+        ('spamhaus', 'Spamhaus DROP', 'threat', True, 'Hijacked and criminal networks that should never be reached at all.', 1489),
+        ('feodo', 'abuse.ch Feodo Tracker', 'threat', True, 'Botnet command servers (Emotet, QakBot, Dridex, TrickBot …).', 6),
+        ('sslbl', 'abuse.ch SSL Blacklist', 'threat', True, 'Botnet command servers recognised by their TLS certificates.', 87),
+        ('et', 'Emerging Threats compromised hosts', 'scanner', True, 'Hosts known to be compromised and attacking others.', 512),
+        ('cins', 'CINS Army', 'scanner', True, 'Scanners and attackers seen by the Sentinel IPS network.', 14873),
+        ('dshield', 'DShield top attackers', 'scanner', True, 'The networks attacking the most right now (SANS Internet Storm Center).', 20),
+        ('blocklistde', 'blocklist.de', 'scanner', False, 'Hosts reported for SSH, mail and web attacks in the last 48 hours.', 0),
+        ('tor', 'Tor exit nodes', 'scanner', False, 'Connections coming from the Tor network (your own Tor use is not affected).', 0),
+    ]
+
+    def sh_settings(self):
+        sh = self.SH
+        return {k: sh[k] for k in ('enabled', 'countries', 'feeds', 'allowlist', 'vtkey', 'abuseipdbkey')}
+
+    def sh_status(self):
+        now = int(time.time())
+        sh = self.SH
+        days = []
+        for i in range(6, -1, -1):
+            r = random.Random(i)
+            days.append({'day': time.strftime('%Y-%m-%d', time.localtime(now - i * 86400)),
+                         'counts': {'scanner-in': r.randint(300, 1400), 'threat-in': r.randint(5, 60),
+                                    'country-in': r.randint(20, 300), 'country-out': r.randint(0, 6),
+                                    'threat-out': 2 if i == 0 else r.randint(0, 1)}})
+        week = {}
+        for d in days:
+            for k, v in d['counts'].items():
+                week[k] = week.get(k, 0) + v
+        feeds = [{'id': f, 'name': n, 'kind': k, 'default': dflt, 'about': a, 'home': 'https://example.org/',
+                  'every': 900 if f in ('feodo', 'sslbl') else 3600, 'enabled': f in sh['feeds'],
+                  'entries': e if f in sh['feeds'] else 0, 'updated': now - 600 if f in sh['feeds'] else 0,
+                  'checked': now - 600, 'error': ''} for f, n, k, dflt, a, e in self.SH_FEEDS]
+        threat = sum(f['entries'] for f in feeds if f['enabled'] and f['kind'] == 'threat')
+        scanner = sum(f['entries'] for f in feeds if f['enabled'] and f['kind'] == 'scanner')
+        unseen = 0 if sh['ack'] > now - 3600 else 1
+        return {'ok': True, 'ts': now, 'enabled': sh['enabled'], 'countries': sh['countries'], 'allow': sh['allowlist'],
+                'feeds': feeds, 'tables': {'country': {'name': 'unisense_geoblock', 'entries': 18342 * len(sh['countries'])},
+                                           'threat': {'name': 'unisense_threats', 'entries': threat if sh['enabled'] else 0},
+                                           'scanner': {'name': 'unisense_scanners', 'entries': scanner if sh['enabled'] else 0}},
+                'limit': 1000000, 'rules': ['country-in', 'country-out', 'scanner-in', 'threat-in', 'threat-out'],
+                'updated': now - 600, 'stats': {'today': days[-1]['counts'], 'week': week, 'days': days},
+                'alerts': unseen, 'alerts_total': 2, 'keys': {'vt': sh['vtkey'], 'abuseipdb': sh['abuseipdbkey']},
+                'db': True, 'errors': [], 'home': 'AU'}
+
+    def sh_hits(self):
+        now = int(time.time())
+        rnd = random.Random(7)
+        hits = []
+        sample = [('scanner-in', '45.148.10.%d', 'NL', 'Techoff Srv Limited', ['22', '23', '3389', '8080', '5900']),
+                  ('country-in', '91.240.118.%d', 'RU', 'Chang Way Technologies', ['445', '1433', '22']),
+                  ('threat-in', '185.220.101.%d', 'DE', 'Zwiebelfreunde e.V.', ['443']),
+                  ('scanner-in', '162.142.125.%d', 'US', 'CENSYS-ARIN-01', ['80', '8443', '161'])]
+        for i in range(60):
+            kind, ip, cc, org, ports = sample[rnd.randrange(len(sample))]
+            hits.append({'ts': now - i * 37 - rnd.randint(0, 30), 'kind': kind, 'iface': 'WAN', 'proto': 'tcp',
+                         'device': '115.64.181.190', 'remote': ip % rnd.randint(2, 250), 'port': rnd.choice(ports),
+                         'sport': str(rnd.randint(30000, 65000)), 'cc': cc, 'org': org})
+        hits.insert(3, {'ts': now - 95, 'kind': 'threat-out', 'iface': 'LAN', 'proto': 'tcp', 'device': '192.168.1.42',
+                        'remote': '50.16.16.211', 'port': '443', 'sport': '51544', 'cc': 'US', 'org': 'AMAZON-AES'})
+        hits.insert(9, {'ts': now - 400, 'kind': 'country-out', 'iface': 'LAN', 'proto': 'udp', 'device': '192.168.1.20',
+                        'remote': '95.163.32.9', 'port': '3478', 'sport': '50000', 'cc': 'RU', 'org': 'VK'})
+        return {'ok': True, 'hits': hits}
+
+    def sh_alerts(self):
+        now = int(time.time())
+        alerts = [{'device': '192.168.1.42', 'remote': '50.16.16.211', 'port': '443', 'proto': 'tcp', 'first': now - 7200,
+                   'last': now - 95, 'count': 14, 'cc': 'US', 'org': 'AMAZON-AES', 'lists': ['feodo']},
+                  {'device': '192.168.20.15', 'remote': '1.10.16.9', 'port': '8080', 'proto': 'tcp', 'first': now - 86400 * 2,
+                   'last': now - 86400, 'count': 3, 'cc': 'CN', 'org': 'CHINANET', 'lists': ['spamhaus']}]
+        ack = self.SH['ack']
+        for a in alerts:
+            a['new'] = a['last'] > ack
+        return {'ok': True, 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts}
+
+    def sh_body(self):
+        try:
+            return json.loads((getattr(self, 'body', b'') or b'{}').decode() or '{}')
+        except ValueError:
+            return {}
+
+    def shield_api(self, action):
+        sh = self.SH
+        if action == 'get':
+            return self._json({'settings': self.sh_settings(), 'status': self.sh_status()})
+        if action == 'status':
+            return self._json(self.sh_status())
+        if action == 'hits':
+            return self._json(self.sh_hits())
+        if action == 'alerts':
+            return self._json(self.sh_alerts())
+        if action == 'ack':
+            sh['ack'] = int(time.time())
+            return self._json({'ok': True})
+        if action == 'update':
+            time.sleep(0.6)
+            return self._json({'ok': True, 'updated': ['feodo', 'sslbl'], 'errors': []})
+        if action == 'checkup':
+            return self._json({'ok': True, 'score': 4, 'total': 7, 'checks': [
+                {'id': 'https', 'ok': True, 'level': 'ok', 'title': 'Web GUI uses HTTPS', 'detail': 'Logins to this page are encrypted.', 'url': '#'},
+                {'id': 'ssh', 'ok': False, 'level': 'warn', 'title': 'SSH is not open to password logins as root',
+                 'detail': 'SSH allows root to log in with a password. Use a key, or turn password login off.', 'url': '#'},
+                {'id': 'bogons', 'ok': True, 'level': 'ok', 'title': 'WAN drops private and bogon addresses', 'detail': 'Spoofed and unroutable sources are dropped on WAN.', 'url': '#'},
+                {'id': 'dnssec', 'ok': True, 'level': 'ok', 'title': 'DNSSEC validation', 'detail': 'Forged DNS answers are rejected.', 'url': '#'},
+                {'id': 'dnsbl', 'ok': False, 'level': 'info', 'title': 'DNS blocklist for malware domains',
+                 'detail': 'Shield blocks bad addresses; Unbound can also block bad domain names. Turn on a blocklist under Services > Unbound DNS > Blocklist.', 'url': '#'},
+                {'id': 'shield', 'ok': True, 'level': 'ok', 'title': 'Shield threat lists', 'detail': 'Botnet and criminal networks are blocked for every device.', 'url': '#'},
+                {'id': 'exposed', 'ok': False, 'level': 'info', 'title': 'Nothing open to the whole Internet',
+                 'detail': '2 port forward(s) and 0 WAN rule(s) accept connections from anywhere. Country blocking and the scanner lists protect them; limit the source where you can.', 'url': '#'}]})
+        if action.startswith('check/'):
+            ip = action.split('/', 1)[1]
+            bad = ip.startswith('50.16.') or ip.startswith('1.10.')
+            return self._json({'ok': True, 'ip': ip, 'public': not ip.startswith('192.168.'), 'cc': 'US', 'asn': 14618, 'org': 'AMAZON-AES',
+                               'lists': [{'id': 'feodo', 'name': 'abuse.ch Feodo Tracker', 'kind': 'threat', 'enabled': True}] if bad else [],
+                               'country_blocked': False, 'allowed': False, 'blocked': bad,
+                               'links': {'virustotal': 'https://www.virustotal.com/gui/ip-address/' + ip, 'abuseipdb': 'https://www.abuseipdb.com/check/' + ip},
+                               'virustotal': {'ok': True, 'malicious': 9 if bad else 0, 'suspicious': 2 if bad else 0, 'harmless': 61, 'undetected': 22,
+                                              'reputation': -14, 'owner': 'AMAZON-AES', 'ts': int(time.time())}})
+        if action in ('set',) or action.startswith('block/') or action.startswith('unblock/'):
+            if self.command != 'POST':
+                return self._json({'result': 'failed', 'error': 'POST required'})
+            killed = 0
+            if action == 'set':
+                body = self.sh_body().get('shield', {})
+                for k in ('countries', 'feeds', 'allowlist'):
+                    if k in body:
+                        sh[k] = list(body[k]) if isinstance(body[k], list) else [x for x in str(body[k]).split(',') if x]
+                if 'enabled' in body:
+                    sh['enabled'] = str(body['enabled']) == '1'
+                for k in ('vtkey', 'abuseipdbkey'):
+                    if k in body:
+                        sh[k] = bool(body[k])
+            elif action.startswith('block/'):
+                cc = action.split('/', 1)[1].upper()
+                if cc not in sh['countries']:
+                    sh['countries'] = sorted(sh['countries'] + [cc])
+                    killed = 3
+            else:
+                cc = action.split('/', 1)[1].upper()
+                sh['countries'] = [c for c in sh['countries'] if c != cc]
+            return self._json({'result': 'saved', 'settings': self.sh_settings(), 'apply': {'ok': True, 'killed': killed, 'errors': []}})
+        return self._json({'ok': False, 'error': 'unknown action'})
 
     def tm_db(self):
         if os.environ.get('UNISENSE_HARNESS_NODB'):

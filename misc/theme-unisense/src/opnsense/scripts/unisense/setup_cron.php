@@ -28,8 +28,10 @@
  */
 
 /*
- * Daily update of the Traffic Map's IP databases as a regular OPNsense cron
- * job (System > Settings > Cron, origin "UniSense"), 01:00 local time.
+ * UniSense's jobs as regular OPNsense cron jobs (System > Settings > Cron,
+ * origin "UniSense"): the Traffic Map's IP databases at 01:00, its history
+ * every minute, and the Shield threat lists every 15 minutes (each list has
+ * its own interval; most are fetched hourly).
  *
  *   setup_cron.php install   create it if missing (an existing job, possibly
  *                            edited by the user, is left alone)
@@ -49,6 +51,7 @@ const ORIGIN = 'UniSense';
 const JOBS = [
     'unisense geoip update' => ['UniSense: update IP-to-country databases (Traffic Map)', '0', '1'],
     'unisense trafficmap sample' => ['UniSense: record Traffic Map history (every minute)', '*', '*'],
+    'unisense shield update' => ['UniSense: refresh the Shield threat lists (every 15 minutes)', '*/15', '*'],
 ];
 
 function find_jobs($mdl)
@@ -102,7 +105,7 @@ try {
             exit(1);
         }
         $mdl->serializeToConfig();
-        $cnf->save(['description' => 'UniSense: Traffic Map jobs (IP database at 01:00, history every minute)']);
+        $cnf->save(['description' => 'UniSense: scheduled jobs (IP database, Traffic Map history, Shield lists)']);
         $cnf->unlock();
         echo "ok" . PHP_EOL;
     } elseif ($action === 'remove') {
@@ -115,7 +118,7 @@ try {
             $mdl->jobs->job->del($uuid);
         }
         $mdl->serializeToConfig(false, true);
-        $cnf->save(['description' => 'UniSense: removed the Traffic Map jobs']);
+        $cnf->save(['description' => 'UniSense: removed the scheduled jobs']);
         $cnf->unlock();
         echo "ok" . PHP_EOL;
     } else {

@@ -595,6 +595,7 @@ def cmd_flows():
         'ts': int(now),
         'interval': round(dt, 2) if valid else 0,
         'home': home,
+        'blocked': shield_countries(),
         'db': db_info(meta, look),
         'totals': totals,
         'countries': sorted(countries.values(), key=lambda c: (c['in_bps'] + c['out_bps'], c['bytes_in'] + c['bytes_out']),
@@ -627,6 +628,31 @@ def service_name(proto, port):
     return ''
 
 
+class Flags:
+    """addresses on a Shield list (shield.py writes the lists as sorted ranges)"""
+
+    def __init__(self):
+        self.t = [(Table(os.path.join('shield', '%s%d.bin' % (k, v)), GEO4 if v == 4 else GEO6), v, k)
+                  for k in ('threat', 'scanner') for v in (4, 6)]
+
+    def __call__(self, addr):
+        try:
+            fam, key = ip_bytes(addr)
+        except ValueError:
+            return ''
+        for table, v, kind in self.t:
+            if v == fam and table.n and table.find(key):
+                return kind
+        return ''
+
+
+def shield_countries():
+    """the countries Shield blocks (as last applied)"""
+    st = load_json(os.path.join(DB_DIR, 'shield', 'state.json'), {})
+    c = st.get('countries', [])
+    return [x for x in c if isinstance(x, str) and re.match(r'^[A-Z]{2}$', x)] if isinstance(c, list) else []
+
+
 def cmd_conns(cc):
     """the connections behind one country (or 'all'): who, to where, how much"""
     cc = (cc or '').upper()
@@ -642,6 +668,7 @@ def cmd_conns(cc):
     dt = now - prev.get('ts', 0) if prev.get('ts') else 0
     valid = 0.5 < dt < 120
     rows = []
+    flags = Flags()
     for key, (down, up, remote, age) in conns.items():
         rcc, asn, org = look(remote) if look.ready else ('', 0, '')
         rcc = rcc or '??'
@@ -657,7 +684,8 @@ def cmd_conns(cc):
             rout = round((up - p[1]) * 8.0 / dt)
         rows.append({'proto': proto, 'local': laddr, 'lport': lport, 'remote': raddr, 'rport': rport,
                      'service': service_name(proto, rport), 'cc': rcc, 'asn': asn, 'org': org,
-                     'bytes_in': down, 'bytes_out': up, 'in_bps': rin, 'out_bps': rout, 'age': age})
+                     'bytes_in': down, 'bytes_out': up, 'in_bps': rin, 'out_bps': rout, 'age': age,
+                     'flag': flags(raddr)})
     rows.sort(key=lambda r: (r['in_bps'] + r['out_bps'], r['bytes_in'] + r['bytes_out']), reverse=True)
     out = {'ok': True, 'ts': int(now), 'cc': cc, 'total': len(rows), 'interval': round(dt, 2) if valid else 0,
            'conns': rows[:CONNS_MAX]}

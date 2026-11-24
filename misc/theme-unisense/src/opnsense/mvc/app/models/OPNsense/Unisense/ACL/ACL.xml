@@ -13,4 +13,11 @@
             <pattern>api/unisense/trafficmap/*</pattern>
         </patterns>
     </page-unisense-trafficmap>
+    <page-unisense-shield>
+        <name>Lobby: Shield</name>
+        <patterns>
+            <pattern>ui/unisense/shield*</pattern>
+            <pattern>api/unisense/shield/*</pattern>
+        </patterns>
+    </page-unisense-shield>
 </acl>

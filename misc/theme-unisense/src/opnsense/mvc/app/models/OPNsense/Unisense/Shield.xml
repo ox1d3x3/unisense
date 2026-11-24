@@ -1,0 +1,38 @@
+<model>
+    <mount>//OPNsense/unisense/shield</mount>
+    <version>1.0.0</version>
+    <description>UniSense Shield: country blocking and threat lists</description>
+    <items>
+        <!-- the threat lists (countries are blocked whenever the list below is not empty) -->
+        <enabled type="BooleanField">
+            <Default>0</Default>
+            <Required>Y</Required>
+        </enabled>
+        <countries type="TextField">
+            <Mask>/^([A-Z]{2}(,[A-Z]{2}){0,248})?$/</Mask>
+            <ValidationMessage>Countries are two-letter codes separated by commas.</ValidationMessage>
+        </countries>
+        <feeds type="TextField">
+            <Default>spamhaus,feodo,sslbl,et,cins,dshield</Default>
+            <Mask>/^((spamhaus|feodo|sslbl|et|cins|dshield|blocklistde|tor)(,(spamhaus|feodo|sslbl|et|cins|dshield|blocklistde|tor)){0,7})?$/</Mask>
+            <ValidationMessage>Unknown threat list.</ValidationMessage>
+        </feeds>
+        <allowlist type="NetworkField">
+            <AsList>Y</AsList>
+            <WildcardEnabled>N</WildcardEnabled>
+            <ValidationMessage>Use IP addresses or networks (CIDR), separated by commas.</ValidationMessage>
+        </allowlist>
+        <vtkey type="TextField">
+            <Mask>/^[A-Za-z0-9]{0,128}$/</Mask>
+            <ValidationMessage>A VirusTotal API key has only letters and digits.</ValidationMessage>
+        </vtkey>
+        <abuseipdbkey type="TextField">
+            <Mask>/^[A-Za-z0-9]{0,128}$/</Mask>
+            <ValidationMessage>An AbuseIPDB API key has only letters and digits.</ValidationMessage>
+        </abuseipdbkey>
+        <!-- the firewall rules UniSense manages: "kind:uuid,..." -->
+        <rules type="TextField">
+            <Mask>/^([a-z-]+:[0-9a-f-]{36}(,[a-z-]+:[0-9a-f-]{36}){0,9})?$/</Mask>
+        </rules>
+    </items>
+</model>

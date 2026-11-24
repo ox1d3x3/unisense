@@ -6,6 +6,7 @@ tablet width. Asserts behaviour and writes screenshots to shots/.
 Usage: interact.py --core /path/to/core [--chrome /usr/bin/google-chrome]
 """
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -421,6 +422,76 @@ def main():
         pg.click('.nav-tabs a >> nth=2'); pg.wait_for_timeout(1500)
         cut = pg.evaluate(cut_js, '.tabulator-cell .btn')
         check(cut == [], 'row command buttons are not clipped' + (f': {cut[:4]}' if cut else ''))
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
+        # --------------------------------------------------------- Shield
+        print('Lobby: Shield')
+        from server import Handler as _H
+        _H.SH.update({'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'sslbl', 'et', 'cins', 'dshield'],
+                      'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0})
+        ctx = b.new_context(viewport={'width': 1440, 'height': 1000})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        posts = []
+        pg.on('request', lambda r: r.method == 'POST' and posts.append((r.url, r.headers.get('x-csrftoken'), r.post_data)))
+        pg.on('dialog', lambda d: d.accept())
+        pg.goto(f'{base}/shield.html'); pg.wait_for_timeout(3500)
+        check('Protected' in pg.inner_text('[data-ush="state"]'), 'protection state shown')
+        check(pg.locator('.ush-stat').count() == 4, 'four counters')
+        check(pg.is_visible('[data-ush="alerts-card"]') and pg.locator('[data-ush="alerts"] tbody tr').count() == 2, 'device alerts listed')
+        badge = pg.locator('#mainmenu a[href="/ui/unisense/shield"] .us-alert-badge')
+        check(badge.count() == 1 and badge.first.inner_text() == '2', 'unseen alerts counted on the Shield menu entry')
+        check(pg.locator('[data-ush="recent"] tbody tr').count() > 10, 'recent blocks listed')
+        pg.click('[data-ush-filter="out"]'); pg.wait_for_timeout(200)
+        rows = pg.locator('[data-ush="recent"] tbody tr').count()
+        check(0 < rows < 5, f'filter: only your devices ({rows})')
+        check(pg.locator('.ush-feed').count() == 8 and pg.locator('.ush-feed.is-on').count() == 6, 'threat lists with their switches')
+        check(pg.locator('.ush-chip').count() == 2, 'blocked countries as chips')
+        pg.fill('[data-ush="add-cc"]', 'China (CN)')
+        pg.click('[data-ush="add-form"] button'); pg.wait_for_timeout(800)
+        check(any(u.endswith('/api/unisense/shield/block/CN') and tok for u, tok, _ in posts), 'block a country (POST with CSRF token)')
+        check(pg.locator('.ush-chip').count() == 3 and 'blocked' in pg.inner_text('[data-ush="add-msg"]'), 'chip added, ended connections reported')
+        pg.click('[data-ush-unblock="KP"]'); pg.wait_for_timeout(800)
+        check(any(u.endswith('/api/unisense/shield/unblock/KP') for u, _, _ in posts) and pg.locator('.ush-chip').count() == 2, 'unblock from the chip')
+        pg.click('.ush-feed:not(.is-on) .ush-switch'); pg.wait_for_timeout(800)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/shield/set')]
+        check(sent and 'blocklistde' in sent[-1]['shield']['feeds'], f'switching a list on saves it ({sent[-1:] })')
+        pg.fill('[data-ush="check-ip"]', '50.16.16.211')
+        pg.click('[data-ush="check-form"] button'); pg.wait_for_timeout(800)
+        res = pg.inner_text('[data-ush="check-result"]')
+        check('Blocked by Shield' in res and 'Feodo' in res and '9 malicious' in res, 'address check: lists and VirusTotal')
+        pg.click('[data-ush-action="ack"]'); pg.wait_for_timeout(800)
+        check(any(u.endswith('/api/unisense/shield/ack') for u, _, _ in posts) and badge.count() == 0, 'mark as seen clears the menu badge')
+        sw = pg.evaluate("document.documentElement.scrollWidth")
+        check(sw <= 1440, f'no horizontal overflow ({sw})')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+        ctx = b.new_context(viewport={'width': 390, 'height': 900})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        pg.goto(f'{base}/shield.html'); pg.wait_for_timeout(2500)
+        sw = pg.evaluate("document.documentElement.scrollWidth")
+        check(sw <= 390, f'phone: no horizontal overflow ({sw})')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
+        print('Traffic Map: block a country, flagged connections')
+        ctx = b.new_context(viewport={'width': 1440, 'height': 1000})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        posts = []
+        pg.on('request', lambda r: r.method == 'POST' and posts.append(r.url))
+        msgs = []
+        pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+        pg.goto(f'{base}/trafficmap.html'); pg.wait_for_timeout(3000)
+        check(pg.locator('.utm-svg path.is-blocked').count() >= 1 and pg.is_visible('[data-utm="legend-blocked"]'), 'blocked countries shaded, legend shown')
+        pg.click('.utm-row[data-cc="NL"]'); pg.wait_for_timeout(400)
+        pg.click('[data-utm-conns="NL"]'); pg.wait_for_timeout(1500)
+        check(pg.locator('.utm-conn.is-flagged .utm-flag-tag.is-threat').count() >= 1, 'listed address flagged in the connections')
+        check(pg.locator('.utm-conn .utm-check-link').count() > 0, 'every connection links to the Shield address check')
+        pg.click('[data-utm="block-btn"]'); pg.wait_for_timeout(1500)
+        check(msgs and 'look like games or voice' in msgs[0], 'warns before cutting live game/voice connections')
+        check(any(u.endswith('/api/unisense/shield/block/NL') for u in posts), 'block posted')
+        check(pg.locator('.utm-row[data-cc="NL"] .utm-blocked-tag').count() == 1 and 'Unblock' in pg.inner_text('[data-utm="block-btn"]'),
+              'country tagged, button turns into Unblock')
         check(not errs, 'no console errors: ' + '; '.join(errs))
         ctx.close()
 

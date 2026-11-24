@@ -38,6 +38,10 @@ case "$1" in
 	install) if grep -q unisense-cron "$cfg"; then echo exists; else sed -i "s:</opnsense>:<unisense-cron/></opnsense>:" "$cfg"; echo ok; fi ;;
 	remove) sed -i "s:<unisense-cron/>::" "$cfg"; echo ok ;;
 	esac ;;
+*setup_shield.php)
+	case "${2:-}" in
+	remove) if grep -q unisense-shield "$cfg"; then sed -i "s:<unisense-shield/>::" "$cfg"; echo changed; else echo none; fi ;;
+	esac ;;
 *) exit 1 ;;
 esac
 SHIM
@@ -95,13 +99,19 @@ t "repairs a removed theme and missing files" 'sh "$H" | grep -q "restored" && [
 t "repair keeps the selected theme" '[ "$(theme)" = opnsense ]'
 t "menu cache cleared for the new core" '[ ! -e "$R/var/lib/php/tmp/opnsense_menu_cache.xml" ]'
 t "quiet again once repaired" 'out="$(sh "$H")" && [ -z "$out" ]'
+t "Shield tables reloaded at boot (pf starts them empty)" 'grep -q "configctl -dq unisense shield apply" "$R/calls"'
 t "status shows self-repair" 'sh install.sh --status | grep -q "Self-repair"'
 
 echo "uninstall"
 cp "$H" "$W/heal-copy.sh"
 sh install.sh --local . >/dev/null
-mkdir -p "$R/var/db/unisense" && echo "{}" > "$R/var/db/unisense/meta.json"
-sh install.sh --uninstall --yes >/dev/null
+mkdir -p "$R/var/db/unisense" "$B/scripts/unisense/__pycache__" && echo "{}" > "$R/var/db/unisense/meta.json"
+echo x > "$B/scripts/unisense/__pycache__/trafficmap.cpython-311.pyc"
+sed -i "s:</opnsense>:<unisense-shield/></opnsense>:" "$R/conf/config.xml"
+: > "$R/calls"
+err="$(sh install.sh --uninstall --yes 2>&1 >/dev/null)"
+t "uninstall without warnings" '[ -z "$err" ]'
+t "Shield tables emptied, rules removed, firewall reloaded" 'grep -q "configctl unisense shield clear" "$R/calls" && ! grep -q unisense-shield "$R/conf/config.xml" && grep -q "configctl filter reload" "$R/calls"'
 t "theme switched back to opnsense" '[ "$(theme)" = opnsense ]'
 t "theme removed" '[ ! -e "$B/www/themes/unisense" ]'
 t "plugin files removed" '[ -z "$(find "$B" -path "*nisense*")" ]'

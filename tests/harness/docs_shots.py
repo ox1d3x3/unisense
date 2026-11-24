@@ -58,6 +58,15 @@ def main():
         shot(b, 'grid-light', 'cron', 'light')
         shot(b, 'trafficmap-dark', 'trafficmap', 'dark', wait=6000)
         shot(b, 'trafficmap-light', 'trafficmap', 'light', size=(1440, 1400), wait=6000)
+        shot(b, 'shield-dark', 'shield', 'dark', size=(1440, 1200), wait=3500)
+
+        def block_panel(pg):
+            pg.click('.utm-row[data-cc="NL"]'); pg.wait_for_timeout(400)
+            pg.click('[data-utm-conns="NL"]'); pg.wait_for_timeout(1500)
+            pg.evaluate("document.querySelector('[data-utm=conns]').scrollIntoView({block: 'start'}); window.scrollBy(0, -76)")
+            pg.wait_for_timeout(400)
+            pg.mouse.move(1435, 895)
+        shot(b, 'trafficmap-block', 'trafficmap', 'light', wait=3500, action=block_panel)
         shot(b, 'networkmap-dark', 'networkmap', 'dark', wait=7000)
         shot(b, 'networkmap-light', 'networkmap', 'light', wait=7000)
         shot(b, 'networkmap-device', 'networkmap', 'light', wait=2500,

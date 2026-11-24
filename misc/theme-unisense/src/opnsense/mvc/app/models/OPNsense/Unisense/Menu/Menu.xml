@@ -6,5 +6,8 @@
         <TrafficMap VisibleName="Traffic Map" order="2" url="/ui/unisense/trafficmap" cssClass="fa fa-earth-americas fa-fw">
             <item url="/ui/unisense/trafficmap/*" visibility="hidden"/>
         </TrafficMap>
+        <Shield VisibleName="Shield" order="2" url="/ui/unisense/shield" cssClass="fa fa-shield-halved fa-fw">
+            <item url="/ui/unisense/shield/*" visibility="hidden"/>
+        </Shield>
     </Lobby>
 </menu>

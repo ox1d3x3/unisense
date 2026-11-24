@@ -43,6 +43,8 @@ SETTHEME="${BASE}/scripts/unisense/settheme.php"
 SETUPCRON="${BASE}/scripts/unisense/setup_cron.php"
 TRAFFICMAP="${BASE}/scripts/unisense/trafficmap.py"
 HEAL="${BASE}/scripts/unisense/heal.sh"
+SHIELD="${BASE}/scripts/unisense/shield.py"
+SETUPSHIELD="${BASE}/scripts/unisense/setup_shield.php"
 DB_DIR="${PREFIX}/var/db/unisense"
 SYSHOOK_DIR="${PREFIX}/usr/local/etc/rc.syshook.d"
 CONFIGCTL="${UNISENSE_CONFIGCTL:-/usr/local/sbin/configctl}"
@@ -212,6 +214,21 @@ keep_copy() {
 backend_off() {
 	if [ -x "$PHP" ] && [ -f "$SETUPCRON" ]; then
 		"$PHP" "$SETUPCRON" remove >/dev/null 2>&1 && [ -x "$CONFIGCTL" ] && "$CONFIGCTL" cron restart >/dev/null 2>&1
+	fi
+	# Shield: empty its tables, then take its rules and aliases out of the firewall
+	if [ -x "$CONFIGCTL" ] && [ -f "$SHIELD" ]; then
+		"$CONFIGCTL" unisense shield clear >/dev/null 2>&1 || true
+	fi
+	if [ -x "$PHP" ] && [ -f "$SETUPSHIELD" ]; then
+		if out="$("$PHP" "$SETUPSHIELD" remove 2>&1)"; then
+			if [ "$out" = "changed" ] && [ -x "$CONFIGCTL" ]; then
+				"$CONFIGCTL" template reload OPNsense/Filter >/dev/null 2>&1
+				"$CONFIGCTL" filter reload >/dev/null 2>&1
+				ok "Shield rules and aliases removed from the firewall"
+			fi
+		else
+			warn "could not remove the Shield firewall rules; delete the \"UniSense Shield\" rules and aliases by hand"
+		fi
 	fi
 }
 
@@ -407,6 +424,8 @@ do_install() {
 	chmod 755 "$SETTHEME"
 	[ -f "$SETUPCRON" ] && chmod 755 "$SETUPCRON"
 	[ -f "$TRAFFICMAP" ] && chmod 755 "$TRAFFICMAP"
+	[ -f "$SHIELD" ] && chmod 755 "$SHIELD"
+	[ -f "$SETUPSHIELD" ] && chmod 755 "$SETUPSHIELD"
 
 	if [ -d "$THEME_DIR" ]; then
 		mv "$THEME_DIR" "${THEME_DIR}.old"
@@ -432,7 +451,7 @@ do_install() {
 	else
 		ok "UniSense updated: $old -> $new"
 	fi
-	ok "Network Map and Traffic Map added: Lobby > Network Map, Lobby > Traffic Map"
+	ok "Pages added: Lobby > Network Map, Lobby > Traffic Map, Lobby > Shield"
 
 	if [ "$ACTIVATE" -eq 1 ]; then
 		if [ "$(current_theme)" = "unisense" ]; then
@@ -452,7 +471,7 @@ do_uninstall() {
 		ok "UniSense is not installed"
 		return 0
 	fi
-	confirm "Remove UniSense and its Network Map / Traffic Map pages?" || { say "Nothing changed."; return 0; }
+	confirm "Remove UniSense, its Lobby pages and the Shield firewall rules?" || { say "Nothing changed."; return 0; }
 
 	if [ "$(current_theme)" = "unisense" ]; then
 		if set_theme opnsense; then
@@ -470,7 +489,7 @@ do_uninstall() {
 			rm -f "${BASE}/$f"
 		done < "$MANIFEST"
 	fi
-	rm -rf "$DB_DIR" "${PREFIX}/tmp/unisense-trafficmap.json"
+	rm -rf "$DB_DIR" "${PREFIX}/tmp/unisense-trafficmap.json" "${BASE}/scripts/unisense/__pycache__"
 	[ -x "$SERVICE" ] && "$SERVICE" configd restart >/dev/null 2>&1
 	# remove the directories we created, if they are now empty
 	for d in mvc/app/views/OPNsense/Unisense mvc/app/models/OPNsense/Unisense/ACL \

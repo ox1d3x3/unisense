@@ -196,6 +196,7 @@
             '<div class="utm-legend">' +
             '<span><i class="utm-key utm-key-dl"></i>' + esc(t('download', 'Download')) + '</span>' +
             '<span><i class="utm-key utm-key-ul"></i>' + esc(t('upload', 'Upload')) + '</span>' +
+            '<span data-utm="legend-blocked" hidden><i class="utm-key utm-key-blocked"></i>' + esc(t('blocked', 'Blocked')) + '</span>' +
             '<span class="utm-legend-scale"><i class="utm-l1"></i><i class="utm-l2"></i><i class="utm-l3"></i><i class="utm-l4"></i><i class="utm-l5"></i></span>' +
             '</div></div>' +
             '<div class="utm-card utm-conns" data-utm="conns" hidden></div>' +
@@ -315,6 +316,8 @@
             }
             level[c.cc] = l;
         });
+        var blocked = blockedSet();
+        q('legend-blocked').hidden = !Object.keys(blocked).length;
         Object.keys(S.pathEls || {}).forEach(function (cc) {
             var l = String(level[cc] || 0);
             S.pathEls[cc].forEach(function (el) {
@@ -322,7 +325,93 @@
                     el.setAttribute('data-l', l);
                 }
                 el.classList.toggle('is-home', cc === S.data.home);
+                el.classList.toggle('is-blocked', !!blocked[cc]);
             });
+        });
+    }
+
+    /* ------------------------------------------------- Shield: blocking */
+    function blockedSet() {
+        var b = {};
+        ((S.data && S.data.blocked) || []).forEach(function (cc) {
+            b[cc] = true;
+        });
+        return b;
+    }
+
+    var GAME = /steam|stun|xbox|game|voice|wireguard|openvpn/i;
+
+    function connNote(text, ok) {
+        var n = q('conns-note');
+        if (n) {
+            n.hidden = !text;
+            n.classList.toggle('is-ok', !!ok);
+            n.textContent = text || '';
+        }
+    }
+
+    /* block or unblock the country shown in the connections panel (Lobby: Shield) */
+    function toggleBlock(cc) {
+        if (!cc || cc === 'ALL' || cc === '??' || S.blocking) {
+            return;
+        }
+        var name = countryName(cc);
+        var unblock = !!blockedSet()[cc];
+        if (!unblock) {
+            var d = S.connData && S.connData.ok ? S.connData : null;
+            var open = d ? d.total : 0;
+            var games = d ? d.conns.filter(function (c) {
+                return GAME.test(c.service || '') || (c.proto === 'udp' && c.in_bps + c.out_bps > 0 && !/^(DNS|NTP|HTTPS)$/.test(c.service || ''));
+            }).length : 0;
+            var msg = 'Block ' + name + '?\n\nConnections from ' + name + ' will be dropped and your devices will not be able to connect to it.' +
+                (open ? '\n\n' + open + ' open connection' + (open === 1 ? '' : 's') + ' to ' + name + ' will end now.' : '');
+            if (games) {
+                msg += '\n\n' + games + ' of them look like games or voice chat. Game servers and matchmaking often run in nearby countries: ' +
+                    'blocking ' + name + ' can stop those games from connecting.';
+            }
+            if (S.data && cc === S.data.home) {
+                msg += '\n\n' + name + ' is where this firewall is: most local websites and services would stop working.';
+            }
+            if (!window.confirm(msg)) {
+                return;
+            }
+        }
+        S.blocking = true;
+        connNote('');
+        renderConns();
+        post('/api/unisense/shield/' + (unblock ? 'unblock/' : 'block/') + cc).then(function (r) {
+            S.blocking = false;
+            if (r && r.result === 'saved') {
+                var list = (r.settings && r.settings.countries) || [];
+                if (S.data) {
+                    S.data.blocked = list;
+                }
+                var killed = r.apply && r.apply.killed;
+                connNote(unblock ? name + ' ' + t('unblockedNote', 'is no longer blocked.') :
+                    name + ' ' + t('blockedNote', 'is blocked.') + (killed ? ' ' + killed + ' open connection' + (killed === 1 ? '' : 's') + ' ended.' : '') +
+                    ' ' + t('manage', 'Manage blocked countries in Lobby: Shield.'), true);
+                paintCountries();
+                markBlocked();
+                loadConns();
+            } else {
+                connNote(t('blockError', 'Could not change the block. Your account needs the "Lobby: Shield" privilege.'));
+            }
+            renderConns();
+        });
+    }
+
+    /* the "Blocked" tag on every table row of a blocked country */
+    function markBlocked() {
+        var b = blockedSet();
+        root.querySelectorAll('.utm-row[data-cc]').forEach(function (row) {
+            var on = !!b[row.getAttribute('data-cc')];
+            var cell = row.querySelector('.utm-c-country');
+            var tag = cell && cell.querySelector('.utm-blocked-tag');
+            if (on && cell && !tag) {
+                cell.insertAdjacentHTML('beforeend', '<small class="utm-blocked-tag"><i class="fa fa-ban"></i>' + esc(t('blocked', 'Blocked')) + '</small>');
+            } else if (!on && tag) {
+                tag.remove();
+            }
         });
     }
 
@@ -927,7 +1016,8 @@
         }
         var c = countryData(cc);
         setHtml(tip, '<div class="utm-tip-head">' + flag(cc) + '<b>' + esc(countryName(cc)) + '</b>' +
-            (S.data && cc === S.data.home ? '<small>' + esc(t('home', 'This firewall')) + '</small>' : '') + '</div>' +
+            (S.data && cc === S.data.home ? '<small>' + esc(t('home', 'This firewall')) + '</small>' : '') +
+            (blockedSet()[cc] ? '<span class="utm-blocked-tag"><i class="fa fa-ban"></i>' + esc(t('blocked', 'Blocked')) + '</span>' : '') + '</div>' +
             (c ? '<div class="utm-tip-rates"><span class="utm-dl">&darr; ' + esc(fmtBits(c.in_bps)) + '</span>' +
                 '<span class="utm-ul">&uarr; ' + esc(fmtBits(c.out_bps)) + '</span></div>' +
                 '<div class="utm-tip-meta">' + c.conns + ' ' + esc(t('connections', 'Connections').toLowerCase()) + ' · ' +
@@ -1299,6 +1389,7 @@
                 }
             });
         }
+        markBlocked();
     }
 
     /* ------------------------------------------------- all countries (history) */
@@ -1399,6 +1490,7 @@
             esc(t('histHow', 'sampled every minute, also while this page is closed')) +
             ' <button type="button" class="btn btn-link btn-xs" data-utm-action="reset">' +
             esc(S.resetArmed ? t('resetConfirm', 'Click again to clear the history') : t('reset', 'Clear history')) + '</button>');
+        markBlocked();
     }
 
     function loadHistory() {
@@ -1468,6 +1560,7 @@
         S.connData = null;
         S.connQuery = '';
         renderConns();
+        connNote('');
         q('conns').querySelector('[data-utm="conns-search"]').value = '';
         loadNames();
         loadConns();
@@ -1510,8 +1603,10 @@
                 '<label class="utm-search"><i class="fa fa-search" aria-hidden="true"></i>' +
                 '<input type="search" data-utm="conns-search" placeholder="' + esc(t('connSearch', 'Filter by device, address, service or network')) + '" ' +
                 'aria-label="' + esc(t('connSearch', 'Filter connections')) + '"></label>' +
+                '<button type="button" class="btn btn-default btn-sm utm-block-btn" data-utm-action="block" data-utm="block-btn" hidden></button>' +
                 '<button type="button" class="btn btn-default btn-sm utm-conns-close" data-utm-action="close-conns" aria-label="' +
                 esc(t('close', 'Close')) + '"><i class="fa fa-times" aria-hidden="true"></i></button></div>' +
+                '<div class="utm-conns-note" data-utm="conns-note" hidden></div>' +
                 '<div class="utm-table-wrap utm-conns-wrap" data-utm="conns-body"></div>';
             var input = el.querySelector('[data-utm="conns-search"]');
             var timer = 0;
@@ -1524,7 +1619,16 @@
             });
         }
         var all = cc === 'ALL';
-        setHtml(q('conns-title'), (all ? '' : flag(cc) + ' ') + esc(all ? t('allConns', 'All connections') : countryName(cc)));
+        setHtml(q('conns-title'), (all ? '' : flag(cc) + ' ') + esc(all ? t('allConns', 'All connections') : countryName(cc)) +
+            (blockedSet()[cc] ? '<span class="utm-blocked-tag"><i class="fa fa-ban"></i>' + esc(t('blocked', 'Blocked')) + '</span>' : ''));
+        var bb = q('block-btn');
+        bb.hidden = all || cc === '??' || S.noShield;
+        var isBlocked = !!blockedSet()[cc];
+        bb.classList.toggle('is-blocked', !isBlocked);
+        bb.disabled = !!S.blocking;
+        setHtml(bb, S.blocking ? '<i class="fa fa-spinner fa-pulse fa-fw"></i> ' + esc(isBlocked ? t('unblocking', 'Unblocking…') : t('blocking', 'Blocking…')) :
+            '<i class="fa ' + (isBlocked ? 'fa-unlock' : 'fa-ban') + ' fa-fw"></i> ' +
+            esc(isBlocked ? t('unblock', 'Unblock') : t('block', 'Block') + ' ' + countryName(cc)));
         var d = S.connData;
         var body = q('conns-body');
         if (!d) {
@@ -1573,10 +1677,17 @@
             var name = names[c.local];
             var rate = c.in_bps + c.out_bps;
             var v6 = c.remote.indexOf(':') !== -1;
-            html += '<tr class="utm-conn' + (rate > 0 ? ' is-live' : '') + '">' +
+            var fl = c.flag === 'threat' ? '<span class="utm-flag-tag is-threat" title="' + esc(t('flagThreat', 'On a Shield threat list (botnet or criminal network)')) + '">' +
+                '<i class="fa fa-skull-crossbones"></i>' + esc(t('threat', 'Threat')) + '</span>' :
+                (c.flag === 'scanner' ? '<span class="utm-flag-tag is-scanner" title="' + esc(t('flagScanner', 'On a Shield scanner list')) + '">' +
+                '<i class="fa fa-satellite-dish"></i>' + esc(t('scanner', 'Scanner')) + '</span>' : '');
+            html += '<tr class="utm-conn' + (rate > 0 ? ' is-live' : '') + (c.flag ? ' is-flagged' : '') + '">' +
                 '<td><span class="utm-dev"><b>' + esc(name || c.local) + '</b>' + (name ? '<small>' + esc(c.local) + '</small>' : '') + '</span></td>' +
                 (all ? '<td><span class="utm-c-country">' + flag(c.cc) + '<span>' + esc(countryName(c.cc)) + '</span></span></td>' : '') +
-                '<td><code class="utm-addr">' + esc(v6 ? '[' + c.remote + ']' : c.remote) + (c.rport ? ':' + esc(c.rport) : '') + '</code></td>' +
+                '<td><code class="utm-addr">' + esc(v6 ? '[' + c.remote + ']' : c.remote) + (c.rport ? ':' + esc(c.rport) : '') + '</code>' + fl +
+                '<a class="utm-check-link" href="/ui/unisense/shield#check=' + encodeURIComponent(c.remote) + '" title="' +
+                esc(t('checkAddr', 'Check this address in Shield')) + '" aria-label="' + esc(t('checkAddr', 'Check this address in Shield')) + '">' +
+                '<i class="fa fa-magnifying-glass"></i></a></td>' +
                 '<td><span class="utm-svc">' + esc(c.service || (c.proto.toUpperCase() + (c.rport ? ' ' + c.rport : ''))) + '</span>' +
                 (c.service ? '<small>' + esc(c.proto.toUpperCase()) + '</small>' : '') + '</td>' +
                 '<td class="utm-c-hide"><span class="utm-org">' + esc(c.org || t('unknownNet', 'Unknown network')) + '</span>' +
@@ -1648,6 +1759,8 @@
                 startUpdate();
             } else if (act === 'close-conns') {
                 closeConns();
+            } else if (act === 'block') {
+                toggleBlock(S.connCc);
             } else if (act === 'reset') {
                 if (!S.resetArmed) {
                     S.resetArmed = true;
