@@ -26,7 +26,7 @@ Each list is fetched directly from its publisher and used only to block traffic 
 | List | Publisher | Terms |
 |---|---|---|
 | DROP (IPv4 + IPv6) | [The Spamhaus Project](https://www.spamhaus.org/drop/) | free, [DROP terms of use](https://www.spamhaus.org/drop/terms/) |
-| Feodo Tracker, SSL Blacklist | [abuse.ch](https://abuse.ch) | free, [terms](https://feodotracker.abuse.ch/blocklist/) |
+| Feodo Tracker | [abuse.ch](https://abuse.ch) | free, [terms](https://feodotracker.abuse.ch/blocklist/) |
 | Compromised IPs | [Emerging Threats](https://rules.emergingthreats.net/) (Proofpoint) | free (ET Open) |
 | CINS Army list | [Sentinel IPS / CINS](https://cinsscore.com/) | free |
 | Recommended block list | [DShield / SANS ISC](https://isc.sans.edu/) | CC BY-NC-SA 2.5 |

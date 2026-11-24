@@ -219,6 +219,8 @@ def run(work):
     nets = S.parse_feed('1.2.3.4,comment\n5.6.7.0/24 ; x\n100.64.1.1\n127.0.0.1\n::1\n2001:db8::1\n')
     t('CSV/semicolon lines; CGNAT, loopback and documentation ranges dropped',
       [str(n) for n in nets] == ['1.2.3.4/32', '5.6.7.0/24'], nets)
+    nets = S.parse_feed('192.168.0.0/15\n192.160.0.0/12\n100.0.0.0/8\n172.0.0.0/8\n2000::/3\n8.8.0.0/16\n')
+    t('a block that only partly covers private / CGNAT space is dropped too', [str(n) for n in nets] == ['8.8.0.0/16'], nets)
 
     print('settings')
     cfg = S.settings()
@@ -230,6 +232,8 @@ def run(work):
     importlib.reload(trafficmap)
     t('no list setting yet: the recommended lists', S.settings()['feeds'] ==
       [f['id'] for f in S.FEEDS if f['default']])
+    (work / 'config2.xml').write_text(config_xml(feeds=''))
+    t('every list switched off stays off (empty setting)', S.settings()['feeds'] == [], S.settings()['feeds'])
     os.environ['UNISENSE_CONFIG_XML'] = str(work / 'config.xml')
     importlib.reload(trafficmap)
 
@@ -241,12 +245,21 @@ def run(work):
     t('allow list + own address become exceptions; private and invalid ignored',
       allow == ['!115.64.181.190/32', '!23.10.5.5/32'], allow)
 
+    print('inert until used')
+    (work / 'config.xml').write_text(config_xml(enabled=False, countries=''))
+    r = call('apply')
+    t('nothing blocked: no pf table is created', r['ok'] and not list(pf.glob('table-*')), list(pf.glob('table-*')))
+    (work / 'config.xml').write_text(config_xml())
+
     print('update')
     r = call('update')
     t('lists downloaded', r['ok'] and sorted(r['updated']) == ['cins', 'feodo', 'spamhaus'], r)
     th = table('unisense_threats')
     t('threat table = Spamhaus + Feodo (+ exceptions)', th is not None and '1.10.16.0/20' in th and
       '50.16.16.211/32' in th and '2a06:e480::/29' in th and '!23.10.5.5/32' in th, th)
+    t('private, CGNAT, link-local and ULA always excepted in every table', all(
+      x in (th or []) and x in (table('unisense_geoblock') or [])
+      for x in ('!10.0.0.0/8', '!192.168.0.0/16', '!100.64.0.0/10', '!169.254.0.0/16', '!fc00::/7', '!fe80::/10')))
     sc = table('unisense_scanners')
     t('scanner table: CINS, collapsed', sc is not None and len([x for x in sc if not x.startswith('!')]) < 2000
       and '45.0.0.0/22' in sc, (sc or [])[:4])
@@ -316,7 +329,13 @@ def run(work):
       hits[1]['proto'] == 'udp' and hits[1]['port'] == '3478', hits[1])
     t('interfaces shown by name', hits[0]['iface'] == 'Home' and hits[2]['iface'] == 'WAN', hits[0]['iface'])
     t('country looked up', hits[1]['cc'] == 'SG', hits[1])
+    stf = work / 'db/shield/state.json'
+    m1 = stf.stat().st_mtime_ns
+    call('status')
+    call('alerts')
+    t('reading again with nothing new does not rewrite the state', stf.stat().st_mtime_ns == m1)
     a = call('alerts')
+    t('alerts say whether the lists are on (the menu badge stops polling without them)', a['enabled'] is True)
     t('one alert: a device tried to reach a botnet/criminal address twice',
       a['unseen'] == 1 and len(a['alerts']) == 1 and a['alerts'][0]['count'] == 2 and
       a['alerts'][0]['lists'] == ['spamhaus'], a)

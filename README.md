@@ -135,7 +135,7 @@ UniSense survives OPNsense firmware updates: it checks itself after every update
 
 **Shield** (Lobby → Shield)
 - **Block countries** from the Traffic Map (one click on a country's connections) or the Shield page: connections from them are dropped and your devices get an instant refusal, so nothing hangs; open connections end straight away
-- **Threat lists that update themselves** — free public feeds of botnet command servers, hijacked/criminal networks and active attackers (Spamhaus DROP, abuse.ch Feodo Tracker and SSL Blacklist, Emerging Threats, CINS Army, DShield; blocklist.de and Tor exits optional), checked every 15 minutes
+- **Threat lists that update themselves** — free public feeds of botnet command servers, hijacked/criminal networks and active attackers (Spamhaus DROP, abuse.ch Feodo Tracker, Emerging Threats, CINS Army, DShield; blocklist.de and Tor exits optional), checked every 15 minutes
 - **Alerts** when a device on your network tries to reach a known-bad address — usually the first sign of an infected device — with a red count on the menu
 - Live counters, the latest blocks, an **address check** (country, network, which lists, and VirusTotal / AbuseIPDB scores with a free API key) and a short **security checkup** of your settings
 - **Gaming-safe**: just firewall table lookups (no packet inspection, no added latency), and scanner lists only ever block inbound
@@ -266,17 +266,16 @@ Access is a separate privilege, **Lobby: Traffic Map**.
 | List | What it contains | Blocks | Default |
 |---|---|---|---|
 | [Spamhaus DROP](https://www.spamhaus.org/drop/) | hijacked and criminal networks | both ways | on |
-| [abuse.ch Feodo Tracker](https://feodotracker.abuse.ch/blocklist/) | botnet command servers (Emotet, QakBot, …) | both ways | on |
-| [abuse.ch SSL Blacklist](https://sslbl.abuse.ch/blacklist/) | botnet command servers (by TLS certificate) | both ways | on |
+| [abuse.ch Feodo Tracker](https://feodotracker.abuse.ch/blocklist/) | active botnet command servers (Emotet, QakBot, …) — often only a few at a time | both ways | on |
 | [Emerging Threats](https://rules.emergingthreats.net/) compromised hosts | hosts attacking others | inbound | on |
 | [CINS Army](https://cinsscore.com/) | scanners and attackers | inbound | on |
 | [DShield](https://isc.sans.edu/) top attackers | the networks attacking the most | inbound | on |
 | [blocklist.de](https://www.blocklist.de/) | SSH/mail/web attackers, last 48 h | inbound | off |
 | [Tor exit nodes](https://www.torproject.org/) | connections from the Tor network | inbound | off |
 
-"Both ways" lists are high-confidence: your devices cannot reach them either, and every attempt becomes an **alert**. Scanner lists only block traffic coming in, so even if one wrongly lists a game server, your outgoing connections are never affected. A cron job, **UniSense: refresh the Shield threat lists**, runs every 15 minutes; botnet lists are refreshed every 15 minutes, the others hourly (Spamhaus every 6 hours, as it asks). A download that fails or looks wrong never replaces the last good copy. *Update lists now* fetches everything on demand.
+"Both ways" lists are high-confidence: your devices cannot reach them either, and every attempt becomes an **alert**. Scanner lists only block traffic coming in, so even if one wrongly lists a game server, your outgoing connections are never affected. A cron job, **UniSense: refresh the Shield threat lists**, runs every 15 minutes. Feodo Tracker is refreshed every 15 minutes, the others hourly (Spamhaus every 6 hours, as it asks). Most of the "both ways" protection comes from Spamhaus DROP (about 1,500 hijacked and criminal networks); Feodo Tracker lists active botnet servers only while a campaign runs, so it is often nearly empty. A download that fails or looks wrong never replaces the last good copy. *Update lists now* fetches everything on demand.
 
-**What it changes in your firewall.** Shield adds three *External* aliases (`unisense_geoblock`, `unisense_threats`, `unisense_scanners`) and five floating block rules named **UniSense Shield: …**, visible under *Firewall → Rules* (*Automation* on 25.7). The rules match traffic entering any interface: from the Internet with a listed source (dropped), or from your devices to a listed destination (refused). Every rule logs, which is how the counters and alerts are made. Private addresses, the firewall's own addresses and everything on the **Never block** list are always exempt. pf empties tables at boot; UniSense fills them again automatically.
+**What it changes in your firewall.** Shield adds three *External* aliases (`unisense_geoblock`, `unisense_threats`, `unisense_scanners`) and five floating block rules named **UniSense Shield: …**, visible under *Firewall → Rules* (*Automation* on 25.7). The rules match traffic entering any interface: from the Internet with a listed source (dropped), or from your devices to a listed destination (refused). Every rule logs, which is how the counters and alerts are made. Private, CGNAT, link-local and loopback ranges, the firewall's own addresses and everything on the **Never block** list are always exempt (a list entry that overlaps them is dropped, and they are added to every table as exceptions). pf empties tables at boot; UniSense fills them again automatically.
 
 **Address check.** Type any IP (or click 🔍 next to a block or connection): its country and network, the lists it is on, and whether Shield blocks it. Add a free [VirusTotal](https://www.virustotal.com/gui/join-us) or [AbuseIPDB](https://www.abuseipdb.com/register) API key under *Reputation lookups* to see their scores too (the lookup is made by the firewall, only when you click; keys stay in the configuration).
 

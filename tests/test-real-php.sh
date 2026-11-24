@@ -243,6 +243,38 @@ t "no countries: country rules off" '[ "$("$PHP" "$SETUPSHIELD" 2>&1 | grep -o "
 sh_ set countries CN >/dev/null
 "$PHP" "$SETUPSHIELD" sync >/dev/null 2>&1
 
+echo "Shield API controller (real models, configd stand-in)"
+cat > "$S/api.php" <<'PHP'
+<?php
+require_once('script/load_phalcon.php');
+// the controller's save path without an HTTP request
+$c = new \OPNsense\Unisense\Api\ShieldController();
+$change = new ReflectionMethod($c, 'change');
+$change->setAccessible(true);
+$run = function ($fn) use ($c, $change) {
+    $r = $change->invoke($c, $fn, 'test');
+    return ($r['result'] ?? '') . (isset($r['validations']) ? ':' . implode(',', array_keys($r['validations'])) : '') .
+        (isset($r['settings']) ? ' ' . implode(',', $r['settings']['countries']) . ' ' . implode(',', $r['settings']['feeds']) .
+        ' ' . ($r['settings']['enabled'] ? 'on' : 'off') : '');
+};
+echo $run(function ($s) { $s['countries'][] = 'ru'; return $s; }), "\n";
+echo $run(function ($s) { $s['countries'][] = 'Atlantis'; return $s; }), "\n";
+echo $run(function ($s) { $s['countries'] = array_diff($s['countries'], ['CN']); return $s; }), "\n";
+echo $run(function ($s) { $s['feeds'] = ['spamhaus', 'tor']; $s['enabled'] = '1'; return $s; }), "\n";
+echo $run(function ($s) { $s['vtkey'] = 'abc123'; return $s; }), "\n";
+echo $run(function ($s) { $s['feeds'] = []; return $s; }), "\n";
+PHP
+: > "$S/configd.log"
+out="$("$PHP" "$S/api.php" 2>&1)" || true
+t "block: code upper-cased and saved, rules updated" '[ "$(printf "%s\n" "$out" | sed -n 1p)" = "saved CN,RU spamhaus,feodo,et,cins,dshield off" ]' show
+t "invalid country refused, nothing saved" '[ "$(printf "%s\n" "$out" | sed -n 2p)" = "failed:shield.countries" ] && [ "$(printf "%s\n" "$out" | sed -n 3p)" = "saved RU spamhaus,feodo,et,cins,dshield off" ]' show
+t "unblock" '[ "$(printf "%s\n" "$out" | sed -n 3p)" = "saved RU spamhaus,feodo,et,cins,dshield off" ]' show
+t "lists switched on with a choice of lists" '[ "$(printf "%s\n" "$out" | sed -n 4p)" = "saved RU spamhaus,tor on" ]' show
+t "API key saved, never sent back" '[ "$(printf "%s\n" "$out" | sed -n 5p)" = "saved RU spamhaus,tor on" ] && grep -q "<vtkey>abc123</vtkey>" /conf/config.xml' show
+t "every list off is saved as empty" '[ "$(printf "%s\n" "$out" | sed -n 6p)" = "saved RU  on" ] && grep -qE "<feeds */>|<feeds></feeds>" /conf/config.xml' show
+t "firewall reloaded and tables loaded through configd" 'grep -q "^filter reload" "$S/configd.log" && grep -q "^unisense shield apply kill" "$S/configd.log"' show
+t "list download started when the lists were switched on" 'grep -q "unisense shield update" "$S/configd.log"' show
+
 echo "uninstall (real php)"
 out="$(UNISENSE_PREFIX=/ UNISENSE_PHP="$PHP" sh install.sh --uninstall --yes 2>&1)" || true
 t "uninstall finishes without warnings" '! printf "%s" "$out" | grep -q -E "^ ! |Fatal|Warning|Deprecated"' show

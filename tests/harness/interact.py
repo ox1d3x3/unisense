@@ -428,7 +428,7 @@ def main():
         # --------------------------------------------------------- Shield
         print('Lobby: Shield')
         from server import Handler as _H
-        _H.SH.update({'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'sslbl', 'et', 'cins', 'dshield'],
+        _H.SH.update({'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'et', 'cins', 'dshield'],
                       'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0})
         ctx = b.new_context(viewport={'width': 1440, 'height': 1000})
         pg = ctx.new_page(); errs = []; watch(pg, errs)
@@ -445,7 +445,7 @@ def main():
         pg.click('[data-ush-filter="out"]'); pg.wait_for_timeout(200)
         rows = pg.locator('[data-ush="recent"] tbody tr').count()
         check(0 < rows < 5, f'filter: only your devices ({rows})')
-        check(pg.locator('.ush-feed').count() == 8 and pg.locator('.ush-feed.is-on').count() == 6, 'threat lists with their switches')
+        check(pg.locator('.ush-feed').count() == 7 and pg.locator('.ush-feed.is-on').count() == 5, 'threat lists with their switches')
         check(pg.locator('.ush-chip').count() == 2, 'blocked countries as chips')
         pg.fill('[data-ush="add-cc"]', 'China (CN)')
         pg.click('[data-ush="add-form"] button'); pg.wait_for_timeout(800)

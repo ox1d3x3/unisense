@@ -75,13 +75,9 @@ FEEDS = [
      'home': 'https://www.spamhaus.org/drop/',
      'urls': ['https://www.spamhaus.org/drop/drop_v4.json', 'https://www.spamhaus.org/drop/drop_v6.json']},
     {'id': 'feodo', 'name': 'abuse.ch Feodo Tracker', 'kind': 'threat', 'default': True, 'every': 15 * M,
-     'about': 'Botnet command servers (Emotet, QakBot, Dridex, TrickBot …).',
+     'about': 'Active botnet command servers (Emotet, QakBot, Dridex …); often only a handful at a time.',
      'home': 'https://feodotracker.abuse.ch/blocklist/',
      'urls': ['https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt']},
-    {'id': 'sslbl', 'name': 'abuse.ch SSL Blacklist', 'kind': 'threat', 'default': True, 'every': 15 * M,
-     'about': 'Botnet command servers recognised by their TLS certificates.',
-     'home': 'https://sslbl.abuse.ch/blacklist/',
-     'urls': ['https://sslbl.abuse.ch/blacklist/sslipblacklist.txt']},
     {'id': 'et', 'name': 'Emerging Threats compromised hosts', 'kind': 'scanner', 'default': True, 'every': H,
      'about': 'Hosts known to be compromised and attacking others.',
      'home': 'https://rules.emergingthreats.net/',
@@ -171,7 +167,8 @@ def split_list(value):
 def settings(root=None):
     root = config_root() if root is None else root
     node = root.find('OPNsense/unisense/shield') if root is not None else None
-    feeds = text(node, 'feeds', None)
+    # no <feeds> element yet: the recommended lists; an empty one: none
+    feeds = text(node, 'feeds') if node is not None and node.find('feeds') is not None else None
     rules = {}
     for item in split_list(text(node, 'rules')):
         kind, _, uuid = item.partition(':')
@@ -202,13 +199,24 @@ def interface_names(root):
 
 
 # ---------------------------------------------------------------- networks
+# never blocked, whatever a list says: private, shared (CGNAT), link-local,
+# loopback and multicast space (also added to every table as "!" exceptions)
+NEVER = [ipaddress.ip_network(n) for n in (
+    '0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12',
+    '192.168.0.0/16', '224.0.0.0/4', '240.0.0.0/4',
+    '::1/128', 'fc00::/7', 'fe80::/10', 'ff00::/8')]
+NEVER_ENTRIES = ['!' + str(n) for n in NEVER]
+
+
 def usable(net):
-    """a public network that is safe to put in a block table"""
+    """a public network that is safe to put in a block table (no overlap with NEVER)"""
     if net.version == 4 and net.prefixlen < 8:
         return False
     if net.version == 6 and net.prefixlen < 19:
         return False
-    return net.is_global and not net.is_multicast
+    if not net.is_global or net.is_multicast:
+        return False
+    return not any(net.version == n.version and net.overlaps(n) for n in NEVER)
 
 
 def parse_feed(data, fmt='', stats=None):
@@ -401,7 +409,7 @@ def build_tables(cfg, own):
     res = {}
     for key, table in TABLES.items():
         nets = country_networks(cfg['countries']) if key == 'country' else collapse(lists[key])
-        res[table] = [str(n) for n in nets] + (allow if nets else [])
+        res[table] = [str(n) for n in nets] + (allow + NEVER_ENTRIES if nets else [])
     return res
 
 
@@ -414,6 +422,8 @@ def load_tables(tables, st):
         rc, so, _ = pfctl('-t', table, '-T', 'show')
         loaded = len([ln for ln in so.splitlines() if ln.strip()]) if rc == 0 else -1
         want = len(entries)
+        if not want and loaded <= 0:
+            continue                      # nothing to block and nothing loaded: leave pf alone
         if applied.get(table, {}).get('sha') == digest and loaded == want:
             continue
         path = os.path.join(SHIELD_DIR, 'tables', table + '.txt')
@@ -634,15 +644,23 @@ def home_country():
     return tm.timezone_country()
 
 
-def cmd_status():
-    cfg = settings()
+def read_log(cfg):
+    """the state, with the firewall log read up to now; saved only when something changed"""
     with Locked():
         st = load_json(STATE_FILE, {})
+        before = json.dumps(st, sort_keys=True)
         try:
             collect(st, cfg)
-            save_json(STATE_FILE, st)
+            if json.dumps(st, sort_keys=True) != before:
+                save_json(STATE_FILE, st)
         except OSError:
             pass
+    return st
+
+
+def cmd_status():
+    cfg = settings()
+    st = read_log(cfg)
     tables = st.get('tables', {})
     unseen = len([a for a in st.get('alerts', []) if a['last'] > st.get('ack', 0)])
     return out({
@@ -715,10 +733,7 @@ def cmd_update(force=False):
 
 def cmd_hits():
     cfg = settings()
-    with Locked():
-        st = load_json(STATE_FILE, {})
-        collect(st, cfg)
-        save_json(STATE_FILE, st)
+    st = read_log(cfg)
     names = interface_names(config_root())
     hits = [dict(h, iface=names.get(h.get('iface'), h.get('iface'))) for h in st.get('recent', [])]
     return out({'ok': True, 'hits': hits})
@@ -726,13 +741,11 @@ def cmd_hits():
 
 def cmd_alerts():
     cfg = settings()
-    with Locked():
-        st = load_json(STATE_FILE, {})
-        collect(st, cfg)
-        save_json(STATE_FILE, st)
+    st = read_log(cfg)
     ack = st.get('ack', 0)
     alerts = [dict(a, new=a['last'] > ack) for a in st.get('alerts', [])]
-    return out({'ok': True, 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts})
+    # "enabled": alerts only come from the threat lists; the menu badge stops polling without them
+    return out({'ok': True, 'enabled': cfg['enabled'], 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts})
 
 
 def cmd_ack():

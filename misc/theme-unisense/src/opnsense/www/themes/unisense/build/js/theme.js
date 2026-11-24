@@ -1588,6 +1588,9 @@
                     }
                     if (d && d.ok) {
                         shieldBadge(d.unseen || 0);
+                        if (!d.enabled && !d.unseen) {
+                            return;       /* threat lists off: no alerts can come; look again on the next page */
+                        }
                     }
                     setTimeout(tick, 120000);
                 });

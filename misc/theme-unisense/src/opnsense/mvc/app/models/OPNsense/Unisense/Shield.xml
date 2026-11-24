@@ -13,8 +13,8 @@
             <ValidationMessage>Countries are two-letter codes separated by commas.</ValidationMessage>
         </countries>
         <feeds type="TextField">
-            <Default>spamhaus,feodo,sslbl,et,cins,dshield</Default>
-            <Mask>/^((spamhaus|feodo|sslbl|et|cins|dshield|blocklistde|tor)(,(spamhaus|feodo|sslbl|et|cins|dshield|blocklistde|tor)){0,7})?$/</Mask>
+            <Default>spamhaus,feodo,et,cins,dshield</Default>
+            <Mask>/^((spamhaus|feodo|et|cins|dshield|blocklistde|tor)(,(spamhaus|feodo|et|cins|dshield|blocklistde|tor)){0,6})?$/</Mask>
             <ValidationMessage>Unknown threat list.</ValidationMessage>
         </feeds>
         <allowlist type="NetworkField">

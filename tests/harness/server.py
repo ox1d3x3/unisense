@@ -474,12 +474,11 @@ class Handler(SimpleHTTPRequestHandler):
         return {'ok': True, 'ts': int(time.time()), 'cc': cc, 'total': len(rows), 'interval': 3.0, 'conns': rows[:300]}
 
     # ---- Shield (scripts/unisense/shield.py output) ----
-    SH = {'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'sslbl', 'et', 'cins', 'dshield'],
+    SH = {'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'et', 'cins', 'dshield'],
           'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0}
     SH_FEEDS = [
         ('spamhaus', 'Spamhaus DROP', 'threat', True, 'Hijacked and criminal networks that should never be reached at all.', 1489),
-        ('feodo', 'abuse.ch Feodo Tracker', 'threat', True, 'Botnet command servers (Emotet, QakBot, Dridex, TrickBot …).', 6),
-        ('sslbl', 'abuse.ch SSL Blacklist', 'threat', True, 'Botnet command servers recognised by their TLS certificates.', 87),
+        ('feodo', 'abuse.ch Feodo Tracker', 'threat', True, 'Active botnet command servers (Emotet, QakBot, Dridex …); often only a handful at a time.', 3),
         ('et', 'Emerging Threats compromised hosts', 'scanner', True, 'Hosts known to be compromised and attacking others.', 512),
         ('cins', 'CINS Army', 'scanner', True, 'Scanners and attackers seen by the Sentinel IPS network.', 14873),
         ('dshield', 'DShield top attackers', 'scanner', True, 'The networks attacking the most right now (SANS Internet Storm Center).', 20),
@@ -506,7 +505,7 @@ class Handler(SimpleHTTPRequestHandler):
             for k, v in d['counts'].items():
                 week[k] = week.get(k, 0) + v
         feeds = [{'id': f, 'name': n, 'kind': k, 'default': dflt, 'about': a, 'home': 'https://example.org/',
-                  'every': 900 if f in ('feodo', 'sslbl') else 3600, 'enabled': f in sh['feeds'],
+                  'every': 900 if f == 'feodo' else 3600, 'enabled': f in sh['feeds'],
                   'entries': e if f in sh['feeds'] else 0, 'updated': now - 600 if f in sh['feeds'] else 0,
                   'checked': now - 600, 'error': ''} for f, n, k, dflt, a, e in self.SH_FEEDS]
         threat = sum(f['entries'] for f in feeds if f['enabled'] and f['kind'] == 'threat')
@@ -572,7 +571,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({'ok': True})
         if action == 'update':
             time.sleep(0.6)
-            return self._json({'ok': True, 'updated': ['feodo', 'sslbl'], 'errors': []})
+            return self._json({'ok': True, 'updated': ['feodo'], 'errors': []})
         if action == 'checkup':
             return self._json({'ok': True, 'score': 4, 'total': 7, 'checks': [
                 {'id': 'https', 'ok': True, 'level': 'ok', 'title': 'Web GUI uses HTTPS', 'detail': 'Logins to this page are encrypted.', 'url': '#'},
