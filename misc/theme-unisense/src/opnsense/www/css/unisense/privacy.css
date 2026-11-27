@@ -145,3 +145,11 @@
 .upv-domain small { display: block; color: var(--utm-text-3); font-size: 11px; }
 .upv-log-wrap td small { max-width: 170px; }
 .upv-domain { max-width: 260px; }
+/* the log always fits its card, whatever the fonts: fixed columns, ellipsis inside */
+.upv-log-wrap table { width: 100%; table-layout: fixed; }
+.upv-log-wrap th:nth-child(1) { width: 96px; }
+.upv-log-wrap th:nth-child(2) { width: 24%; }
+.upv-log-wrap th:nth-child(4) { width: 26%; }
+.upv-log-wrap th:last-child { width: 48px; }
+.upv-log-wrap td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upv-log-wrap td small, .upv-domain { max-width: 100%; }

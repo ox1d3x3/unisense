@@ -21,8 +21,17 @@ refreshed every 15 minutes) with pf tables and floating rules, alerts when
 a device tries to reach one, and checks addresses and the firewall's own
 security settings.
 
+Lobby: Privacy blocks ads, trackers and malware domains for every device
+through Unbound's blocklists (or a connected AdGuard Home), keeps game
+services working, and stops devices from going around it.
+
 Plugin Changelog
 ================
+
+1.6
+
+* Privacy: ad and tracker blocking (Unbound built in, or AdGuard Home)
+* Shield: allow a flagged address for a set time
 
 1.5
 
