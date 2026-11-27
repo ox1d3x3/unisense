@@ -291,6 +291,9 @@
             S.settings = d.settings;
             S.status = d.status && d.status.ok ? d.status : S.status;
             render();
+            /* allowed addresses show in these tables too */
+            renderAlerts();
+            renderRecent();
         });
     }
 
