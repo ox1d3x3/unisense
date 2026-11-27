@@ -13,6 +13,8 @@
     shield.py check <ip>        everything known about one address (JSON)
     shield.py checkup           a short security check of the firewall's settings (JSON)
     shield.py clear             empty every Shield table
+    shield.py allow <ip> <for>  let an address through: 1h, 6h, 24h, 1mo or restart
+    shield.py unallow <ip>      take a timed exception out
 
     How it blocks. Three pf tables, each behind "External" aliases and quick
     floating rules that UniSense adds to the firewall (see Shield.php):
@@ -282,10 +284,54 @@ def country_networks(countries):
     return collapse(nets)
 
 
-def allow_entries(cfg, own=()):
-    """'!address' exceptions: the allow list and the firewall's own public addresses"""
+# timed exceptions ("Allow for …"): seconds; 0 = until the firewall restarts
+DURATIONS = {'1h': H, '6h': 6 * H, '24h': 24 * H, '1mo': 30 * 24 * H, 'restart': 0}
+
+
+def boot_id():
+    """identifies this boot (FreeBSD kern.boottime; tests set UNISENSE_BOOT_ID)"""
+    if os.environ.get('UNISENSE_BOOT_ID'):
+        return os.environ['UNISENSE_BOOT_ID']
+    try:
+        r = subprocess.run(['/sbin/sysctl', '-n', 'kern.boottime'], capture_output=True, text=True, timeout=5)
+        m = re.search(r'sec = (\d+)', r.stdout)
+        if m:
+            return m.group(1)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        with open('/proc/stat') as f:
+            for line in f:
+                if line.startswith('btime'):
+                    return line.split()[1]
+    except OSError:
+        pass
+    return ''
+
+
+def prune_allows(st):
+    """drop timed exceptions that ran out, and "until restart" ones from an earlier boot; -> changed"""
+    allows = st.get('allows', {})
+    boot = None
+    keep = {}
+    for net, a in allows.items():
+        if a.get('until') and a['until'] <= now():
+            continue
+        if a.get('dur') == 'restart':
+            boot = boot_id() if boot is None else boot
+            if a.get('boot') != boot:
+                continue
+        keep[net] = a
+    changed = len(keep) != len(allows)
+    if changed:
+        st['allows'] = keep
+    return changed
+
+
+def allow_entries(cfg, own=(), temp=()):
+    """'!address' exceptions: the allow list, timed exceptions and the firewall's own public addresses"""
     res = []
-    for a in list(cfg['allow']) + sorted(own):
+    for a in list(cfg['allow']) + list(temp) + sorted(own):
         try:
             net = ipaddress.ip_network(a, strict=False)
         except ValueError:
@@ -400,9 +446,9 @@ def own_public():
     return {a for a in tm.local_addresses() if tm.is_remote(a, set())}
 
 
-def build_tables(cfg, own):
+def build_tables(cfg, own, temp=()):
     """-> {table: [entries]} for the current settings (countries and lists switch on separately)"""
-    allow = allow_entries(cfg, own)
+    allow = allow_entries(cfg, own, temp)
     lists = {'threat': [], 'scanner': []}
     for fid in cfg['feeds'] if cfg['enabled'] else []:
         lists[FEED_BY_ID[fid]['kind']].extend(ipaddress.ip_network(x, strict=False) for x in read_lines(feed_path(fid)))
@@ -650,6 +696,8 @@ def read_log(cfg):
         st = load_json(STATE_FILE, {})
         before = json.dumps(st, sort_keys=True)
         try:
+            if prune_allows(st):
+                apply(cfg, st)            # a timed exception ran out: take it out of the tables
             collect(st, cfg)
             if json.dumps(st, sort_keys=True) != before:
                 save_json(STATE_FILE, st)
@@ -672,12 +720,14 @@ def cmd_status():
         'updated': st.get('updated', 0), 'stats': stats(st), 'alerts': unseen,
         'alerts_total': len(st.get('alerts', [])), 'keys': {'vt': bool(cfg['vtkey']), 'abuseipdb': bool(cfg['abusekey'])},
         'db': bool(tm.Lookup().geo4.n), 'errors': st.get('errors', []), 'home': home_country(),
+        'allows': allow_list(st, cfg),
     })
 
 
 def apply(cfg, st, kill=False):
     own = own_public()
-    tables = build_tables(cfg, own)
+    prune_allows(st)
+    tables = build_tables(cfg, own, sorted(st.get('allows', {})))
     errors = load_tables(tables, st)
     try:
         write_flags(tables)
@@ -756,6 +806,53 @@ def cmd_ack():
     return out({'ok': True})
 
 
+def allow_list(st, cfg):
+    """every exception, timed and permanent, for the page"""
+    res = []
+    for net, a in sorted(st.get('allows', {}).items()):
+        res.append({'net': net, 'addr': net[:-3] if net.endswith('/32') else (net[:-4] if net.endswith('/128') else net),
+                    'dur': a.get('dur', ''), 'until': a.get('until', 0), 'added': a.get('added', 0), 'forever': False})
+    for x in cfg['allow']:
+        res.append({'net': x, 'addr': x, 'dur': 'forever', 'until': 0, 'added': 0, 'forever': True})
+    return res
+
+
+def cmd_allow(addr, dur):
+    """let an address through for a while (it stays on its lists; Shield just skips it)"""
+    try:
+        net = ipaddress.ip_network(addr, strict=False)
+    except ValueError:
+        return out({'ok': False, 'error': 'invalid address'})
+    if dur not in DURATIONS:
+        return out({'ok': False, 'error': 'unknown duration'})
+    if not net.is_global or (net.version == 4 and net.prefixlen < 16) or (net.version == 6 and net.prefixlen < 32):
+        return out({'ok': False, 'error': 'allow single addresses or small public networks only'})
+    cfg = settings()
+    with Locked():
+        st = load_json(STATE_FILE, {})
+        st.setdefault('allows', {})[str(net)] = {
+            'dur': dur, 'added': int(now()),
+            'until': int(now() + DURATIONS[dur]) if DURATIONS[dur] else 0,
+            'boot': boot_id() if dur == 'restart' else ''}
+        errors, _ = apply(cfg, st)
+        save_json(STATE_FILE, st)
+    return out({'ok': not errors, 'errors': errors, 'allows': allow_list(st, cfg)})
+
+
+def cmd_unallow(addr):
+    try:
+        net = str(ipaddress.ip_network(addr, strict=False))
+    except ValueError:
+        return out({'ok': False, 'error': 'invalid address'})
+    cfg = settings()
+    with Locked():
+        st = load_json(STATE_FILE, {})
+        found = st.get('allows', {}).pop(net, None) is not None
+        errors, _ = apply(cfg, st)
+        save_json(STATE_FILE, st)
+    return out({'ok': not errors, 'removed': found, 'errors': errors, 'allows': allow_list(st, cfg)})
+
+
 def cmd_clear():
     with Locked():
         st = load_json(STATE_FILE, {})
@@ -822,16 +919,27 @@ def cmd_check(ip):
     cc, asn, org = look(ip) if look.ready else ('', 0, '')
     lists = Lists([f['id'] for f in FEEDS]).find(ip)
     allowed = False
+    allow_until = None
+    st = load_json(STATE_FILE, {})
+    prune_allows(st)
     for x in cfg['allow']:
         try:
             if a in ipaddress.ip_network(x, strict=False):
                 allowed = True
+                allow_until = -1
+        except ValueError:
+            pass
+    for x, v in st.get('allows', {}).items():
+        try:
+            if a in ipaddress.ip_network(x, strict=False) and not allowed:
+                allowed = True
+                allow_until = v.get('until', 0)
         except ValueError:
             pass
     res = {'ok': True, 'ip': ip, 'public': a.is_global, 'cc': cc, 'asn': asn, 'org': org,
            'lists': [{'id': f, 'name': FEED_BY_ID[f]['name'], 'kind': FEED_BY_ID[f]['kind'],
                       'enabled': f in cfg['feeds']} for f in lists],
-           'country_blocked': bool(cc) and cc in cfg['countries'], 'allowed': allowed,
+           'country_blocked': bool(cc) and cc in cfg['countries'], 'allowed': allowed, 'allow_until': allow_until,
            'blocked': not allowed and ((bool(cc) and cc in cfg['countries']) or
                                        (cfg['enabled'] and any(f in cfg['feeds'] for f in lists))),
            'links': {'virustotal': 'https://www.virustotal.com/gui/ip-address/' + ip,
@@ -852,19 +960,19 @@ def cmd_checkup():
                        'detail': detail, 'url': url})
 
     sysn = root.find('system') if root is not None else None
-    add('https', text(sysn, 'webgui/protocol', 'https') == 'https', 'Web GUI uses HTTPS',
+    add('https', text(sysn, 'webgui/protocol', 'https') == 'https', 'Web GUI over HTTPS',
         'Logins to this page are encrypted.' if text(sysn, 'webgui/protocol', 'https') == 'https' else
         'Logins to this page travel unencrypted. Switch the protocol to HTTPS.', '/system_advanced_admin.php')
     ssh_on = text(sysn, 'ssh/enabled') in ('enabled', '1')
     ssh_root = text(sysn, 'ssh/permitrootlogin') == '1'
     ssh_pw = text(sysn, 'ssh/passwordauth') == '1'
-    add('ssh', not (ssh_on and ssh_root and ssh_pw), 'SSH is not open to password logins as root',
+    add('ssh', not (ssh_on and ssh_root and ssh_pw), 'SSH root password login',
         'SSH is off or uses keys.' if not ssh_on or not (ssh_root and ssh_pw) else
         'SSH allows root to log in with a password. Use a key, or turn password login off.',
         '/system_advanced_admin.php')
     wan = root.find('interfaces/wan') if root is not None else None
     bogons = text(wan, 'blockbogons') == '1' and text(wan, 'blockpriv') == '1'
-    add('bogons', bogons, 'WAN drops private and bogon addresses',
+    add('bogons', bogons, 'Private and bogon addresses on WAN',
         'Spoofed and unroutable sources are dropped on WAN.' if bogons else
         'Turn on "Block private networks" and "Block bogon networks" on the WAN interface (leave private '
         'off if your modem gives you a private WAN address).', '/interfaces.php?if=wan')
@@ -881,10 +989,10 @@ def cmd_checkup():
                 dnsbl = True
         if text(ub, 'dnsbl/enabled') == '1':
             dnsbl = True
-    add('dnsbl', dnsbl or not unbound_on, 'DNS blocklist for malware domains',
+    add('dnsbl', dnsbl or not unbound_on, 'DNS blocklist',
         'Unbound blocks known malware and tracking domains.' if dnsbl else
         'Shield blocks bad addresses; Unbound can also block bad domain names. Turn on a blocklist under '
-        'Services > Unbound DNS > Blocklist.' if unbound_on else 'Unbound DNS is not in use.',
+        'Services: Unbound DNS: Blocklist.' if unbound_on else 'Unbound DNS is not in use.',
         '/ui/unbound/dnsbl', 'info')
     shield_ok = cfg['enabled'] and any(FEED_BY_ID[f]['kind'] == 'threat' for f in cfg['feeds'])
     add('shield', shield_ok, 'Shield threat lists',
@@ -905,7 +1013,7 @@ def cmd_checkup():
     forwards += len([r for r in (root.findall('OPNsense/Firewall/DNat/rule') if root is not None else [])
                      if text(r, 'disabled') != '1'])
     exposed = open_rules + forwards
-    add('exposed', exposed == 0, 'Nothing open to the whole Internet',
+    add('exposed', exposed == 0, 'Open to the Internet',
         'No WAN rule or port forward accepts connections from anywhere.' if exposed == 0 else
         '%d port forward(s) and %d WAN rule(s) accept connections from anywhere. Country blocking and the '
         'scanner lists protect them; limit the source where you can.' % (forwards, open_rules),
@@ -934,6 +1042,10 @@ def main(argv):
         return cmd_checkup()
     if cmd == 'clear':
         return cmd_clear()
+    if cmd == 'allow':
+        return cmd_allow(argv[2] if len(argv) > 2 else '', argv[3] if len(argv) > 3 else '')
+    if cmd == 'unallow':
+        return cmd_unallow(argv[2] if len(argv) > 2 else '')
     sys.stderr.write(__doc__)
     return 2
 

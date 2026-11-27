@@ -475,7 +475,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- Shield (scripts/unisense/shield.py output) ----
     SH = {'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'et', 'cins', 'dshield'],
-          'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0}
+          'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0, 'allows': {}}
     SH_FEEDS = [
         ('spamhaus', 'Spamhaus DROP', 'threat', True, 'Hijacked and criminal networks that should never be reached at all.', 1489),
         ('feodo', 'abuse.ch Feodo Tracker', 'threat', True, 'Active botnet command servers (Emotet, QakBot, Dridex …); often only a handful at a time.', 3),
@@ -518,7 +518,10 @@ class Handler(SimpleHTTPRequestHandler):
                 'limit': 1000000, 'rules': ['country-in', 'country-out', 'scanner-in', 'threat-in', 'threat-out'],
                 'updated': now - 600, 'stats': {'today': days[-1]['counts'], 'week': week, 'days': days},
                 'alerts': unseen, 'alerts_total': 2, 'keys': {'vt': sh['vtkey'], 'abuseipdb': sh['abuseipdbkey']},
-                'db': True, 'errors': [], 'home': 'AU'}
+                'db': True, 'errors': [], 'home': 'AU',
+                'allows': [{'net': n + '/32', 'addr': n, 'dur': d, 'until': u, 'added': now, 'forever': False}
+                           for n, (d, u) in sorted(sh['allows'].items())] +
+                          [{'net': a, 'addr': a, 'dur': 'forever', 'until': 0, 'added': 0, 'forever': True} for a in sh['allowlist']]}
 
     def sh_hits(self):
         now = int(time.time())
@@ -580,10 +583,24 @@ class Handler(SimpleHTTPRequestHandler):
                 {'id': 'bogons', 'ok': True, 'level': 'ok', 'title': 'WAN drops private and bogon addresses', 'detail': 'Spoofed and unroutable sources are dropped on WAN.', 'url': '#'},
                 {'id': 'dnssec', 'ok': True, 'level': 'ok', 'title': 'DNSSEC validation', 'detail': 'Forged DNS answers are rejected.', 'url': '#'},
                 {'id': 'dnsbl', 'ok': False, 'level': 'info', 'title': 'DNS blocklist for malware domains',
-                 'detail': 'Shield blocks bad addresses; Unbound can also block bad domain names. Turn on a blocklist under Services > Unbound DNS > Blocklist.', 'url': '#'},
+                 'detail': 'Shield blocks bad addresses; Unbound can also block bad domain names. Turn on a blocklist under Services &gt; Unbound DNS &gt; Blocklist.', 'url': '#'},
                 {'id': 'shield', 'ok': True, 'level': 'ok', 'title': 'Shield threat lists', 'detail': 'Botnet and criminal networks are blocked for every device.', 'url': '#'},
                 {'id': 'exposed', 'ok': False, 'level': 'info', 'title': 'Nothing open to the whole Internet',
                  'detail': '2 port forward(s) and 0 WAN rule(s) accept connections from anywhere. Country blocking and the scanner lists protect them; limit the source where you can.', 'url': '#'}]})
+        if action in ('allow', 'unallow'):
+            body = self.sh_body()
+            addr = str(body.get('address', ''))
+            if action == 'allow':
+                dur = body.get('duration')
+                if dur == 'forever':
+                    sh['allowlist'] = sh['allowlist'] + [addr]
+                else:
+                    secs = {'1h': 3600, '6h': 21600, '24h': 86400, '1mo': 2592000, 'restart': 0}[dur]
+                    sh['allows'][addr] = (dur, int(time.time()) + secs if secs else 0)
+            else:
+                sh['allows'].pop(addr.replace('/32', ''), None)
+                sh['allowlist'] = [a for a in sh['allowlist'] if a != addr]
+            return self._json({'ok': True, 'allows': self.sh_status()['allows']})
         if action.startswith('check/'):
             ip = action.split('/', 1)[1]
             bad = ip.startswith('50.16.') or ip.startswith('1.10.')

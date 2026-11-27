@@ -366,9 +366,39 @@ def run(work):
       and c['allowed'] and not c['blocked'], c)
     t('invalid address refused', call('check', '1.2.3;rm')['ok'] is False)
 
+    print('timed exceptions (Allow for …)')
+    os.environ['UNISENSE_BOOT_ID'] = 'boot-A'
+    r = call('allow', '1.10.16.9', '1h')
+    t('allow for an hour: taken out of every table at once', r['ok'] and '!1.10.16.9/32' in table('unisense_threats')
+      and '!1.10.16.9/32' in table('unisense_geoblock'), r)
+    c = call('check', '1.10.16.9')
+    t('the check shows it allowed, with its end time', c['allowed'] and not c['blocked'] and
+      c['allow_until'] == int(S.NOW) + 3600 and c['lists'], c)
+    s1 = call('status')
+    t('listed on the page with its duration', any(a['addr'] == '1.10.16.9' and a['dur'] == '1h' for a in s1['allows'])
+      and any(a['forever'] and a['addr'] == '23.10.5.5' for a in s1['allows']), s1['allows'])
+    r = call('allow', '50.16.16.0/24', 'restart')
+    t('a small network until the next restart', r['ok'] and '!50.16.16.0/24' in table('unisense_threats'), r)
+    for bad, dur, why in (('10.0.0.1', '1h', 'private'), ('1.0.0.0/8', '1h', 'too wide'), ('1.10.16.9', 'week', 'duration'),
+                          ('1.2.3;rm', '1h', 'not an address')):
+        r = call('allow', bad, dur)
+        t('refused: ' + why, r['ok'] is False, r)
+    S.NOW += 3601
+    s1 = call('status')
+    t('after an hour it expires by itself (on the next poll or cron run)',
+      not any(a['addr'] == '1.10.16.9' for a in s1['allows']) and '!1.10.16.9/32' not in table('unisense_threats'), s1['allows'])
+    t('…while "until restart" stays', '!50.16.16.0/24' in table('unisense_threats'))
+    os.environ['UNISENSE_BOOT_ID'] = 'boot-B'
+    call('apply')
+    t('after a restart it is gone', '!50.16.16.0/24' not in table('unisense_threats'))
+    call('allow', '85.203.46.168', '1mo')
+    r = call('unallow', '85.203.46.168')
+    t('removed on request', r['ok'] and r['removed'] and '!85.203.46.168/32' not in table('unisense_threats'), r)
+
     print('checkup')
     k = {x['id']: x for x in call('checkup')['checks']}
     t('HTTP GUI flagged', not k['https']['ok'] and k['https']['level'] == 'warn')
+    t('no ">" in any message (the API escapes it)', not any('>' in x['detail'] + x['title'] for x in k.values()))
     t('root SSH with password flagged', not k['ssh']['ok'])
     t('WAN bogons/private ok, DNSSEC ok', k['bogons']['ok'] and k['dnssec']['ok'])
     t('DNS blocklist suggested (info only)', not k['dnsbl']['ok'] and k['dnsbl']['level'] == 'info')

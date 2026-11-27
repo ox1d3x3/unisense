@@ -34,8 +34,15 @@
     }
 
     /* ------------------------------------------------------------ helpers */
+    /* OPNsense's API HTML-escapes some text; undo that first so it is escaped exactly once */
+    function unescape(v) {
+        return String(v).replace(/&(lt|gt|quot|#39|#039|amp);/g, function (m, e) {
+            return { lt: '<', gt: '>', quot: '"', '#39': "'", '#039': "'", amp: '&' }[e];
+        });
+    }
+
     function esc(v) {
-        return String(v === undefined || v === null ? '' : v)
+        return unescape(v === undefined || v === null ? '' : v)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
@@ -170,6 +177,8 @@
         filter: 'all'
     };
 
+    var menu = null;   /* the open "Allow for …" menu */
+
     /* ------------------------------------------------------------ skeleton */
     function card(name, title, sub, body, extraHead) {
         return '<div class="utm-card ush-card" data-ush="' + name + '-card">' +
@@ -216,7 +225,8 @@
                 '<datalist id="ush-cc" data-ush="cc-list"></datalist>' +
                 '<button type="submit" class="btn btn-default btn-sm"><i class="fa fa-ban fa-fw"></i> ' + esc(t('block', 'Block')) + '</button></form>' +
                 '<div class="ush-msg" data-ush="add-msg"></div>') +
-            card('allow', t('allow', 'Never block'), t('allowHelp', 'Addresses or networks Shield never blocks, even when a list or a blocked country includes them (one per line).'),
+            card('allow', t('allow', 'Allowed addresses'), t('allowHelp', 'Addresses Shield lets through even when a list or a blocked country includes them. Use Allow on a block or alert for a set time; the box below is for addresses that should never be blocked (one per line).'),
+                '<ul class="ush-allows" data-ush="allows"></ul>' +
                 '<textarea class="form-control ush-textarea" rows="3" data-ush="allowlist" spellcheck="false" placeholder="203.0.113.7&#10;198.51.100.0/24"></textarea>' +
                 '<div class="ush-row"><button type="button" class="btn btn-default btn-sm" data-ush-action="save-allow">' + esc(t('save', 'Save')) + '</button>' +
                 '<span class="ush-msg" data-ush="allow-msg"></span></div>') +
@@ -243,6 +253,16 @@
         }).join('');
 
         root.addEventListener('click', onClick);
+        document.addEventListener('click', function (e) {
+            if (menu && !root.contains(e.target)) {
+                closeMenu();
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeMenu();
+            }
+        });
         root.addEventListener('change', onChange);
         q('add-form').addEventListener('submit', function (e) {
             e.preventDefault();
@@ -380,6 +400,10 @@
         }).join(''));
     }
 
+    function plural(n, one, many) {
+        return n + ' ' + (n === 1 ? one : many);
+    }
+
     function stat(icon, title, value, sub, cls, bars) {
         return '<div class="utm-stat ush-stat ' + (cls || '') + '"><span class="utm-stat-icon"><i class="fa ' + icon + '"></i></span>' +
             '<span class="utm-stat-body"><span class="utm-stat-title">' + esc(title) + '</span>' +
@@ -428,7 +452,8 @@
             stat('fa-triangle-exclamation', t('alerts', 'Alerts'), String(unseen || 0),
                 total ? total + ' device ' + (total === 1 ? 'alert' : 'alerts') + ' kept' : 'all clear', unseen ? 'is-alert' : 'is-clear') +
             stat('fa-list-check', t('listed', 'Addresses on block lists'), num(listed),
-                (S.settings ? S.settings.feeds.length : 0) + ' lists · ' + (S.settings ? S.settings.countries.length : 0) + ' countries', 'is-list'));
+                plural(S.settings ? S.settings.feeds.length : 0, 'list', 'lists') + ' · ' +
+                plural(S.settings ? S.settings.countries.length : 0, 'country', 'countries'), 'is-list'));
     }
 
     function renderLists() {
@@ -474,7 +499,19 @@
         }).join('') : '<span class="utm-muted">' + esc(t('noCountries', 'No country is blocked.')) + '</span>');
     }
 
+    function renderAllows() {
+        var list = ((S.status && S.status.allows) || []).filter(function (a) {
+            return !a.forever;
+        });
+        setHtml(q('allows'), list.map(function (a) {
+            return '<li><code class="utm-addr">' + esc(a.addr) + '</code><span>' + esc(left(a)) + '</span>' +
+                '<button type="button" class="ush-chip-x" data-ush-unallow="' + esc(a.net) + '" title="Block again" aria-label="Block ' + esc(a.addr) + ' again">' +
+                '<i class="fa fa-xmark"></i></button></li>';
+        }).join(''));
+    }
+
     function renderForms() {
+        renderAllows();
         var s = S.settings;
         var ta = q('allowlist');
         if (document.activeElement !== ta && !ta.__dirty) {
@@ -501,6 +538,47 @@
             '<small>' + esc((cc ? countryName(cc) : '') + (org ? (cc ? ' · ' : '') + org : '')) + '</small></span></span>';
     }
 
+    var DUR = [['1h', '1 hour'], ['6h', '6 hours'], ['24h', '24 hours'], ['1mo', '1 month'],
+        ['restart', 'Until restart'], ['forever', 'Always']];
+
+    function allowedEntry(ip) {
+        var list = (S.status && S.status.allows) || [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].addr === ip || list[i].net === ip) {
+                return list[i];
+            }
+        }
+        return null;
+    }
+
+    function left(a) {
+        if (a.forever) {
+            return 'always';
+        }
+        if (a.dur === 'restart') {
+            return 'until restart';
+        }
+        var s = Math.max(0, a.until - Date.now() / 1000);
+        if (s < 3600) {
+            return Math.max(1, Math.round(s / 60)) + ' min left';
+        }
+        if (s < 172800) {
+            return Math.round(s / 3600) + ' h left';
+        }
+        return Math.round(s / 86400) + ' days left';
+    }
+
+    /* "Allow" (opens the duration menu) or, once allowed, a tag with the time left */
+    function allowBtn(ip) {
+        var a = allowedEntry(ip);
+        if (a) {
+            return '<span class="ush-allowed" title="Allowed ' + esc(left(a)) + '"><i class="fa fa-check"></i> ' + esc(left(a)) + '</span>';
+        }
+        return '<button type="button" class="btn btn-default btn-xs ush-allow-btn" data-ush-allow="' + esc(ip) + '" aria-haspopup="menu" ' +
+            'title="' + esc(t('allowBtn', 'Allow this address…')) + '" aria-label="' + esc(t('allowBtn', 'Allow this address…')) + '">' +
+            '<i class="fa fa-unlock"></i><i class="fa fa-caret-down ush-caret"></i></button>';
+    }
+
     function checkBtn(ip) {
         return '<button type="button" class="btn btn-default btn-xs" data-ush-check="' + esc(ip) + '" title="Check this address">' +
             '<i class="fa fa-magnifying-glass"></i></button>';
@@ -520,16 +598,15 @@
             feeds[f.id] = f.name;
         });
         setHtml(q('alerts'), '<div class="utm-table-wrap"><table class="utm-table ush-table"><thead><tr><th>Device</th><th>Tried to reach</th>' +
-            '<th>List</th><th class="utm-c-num">Tries</th><th class="utm-c-num">Last</th><th></th></tr></thead><tbody>' +
+            '<th>List</th><th>Seen</th><th></th></tr></thead><tbody>' +
             a.alerts.map(function (x) {
                 return '<tr class="' + (x['new'] ? 'is-new' : '') + '"><td>' + devHtml(x.device) + '</td>' +
                     '<td>' + remoteHtml(x.remote, x.cc, x.org) + (x.port ? '<small class="ush-port">' + esc(x.proto.toUpperCase() + ' ' + x.port) + '</small>' : '') + '</td>' +
                     '<td>' + (x.lists || []).map(function (l) {
                         return '<span class="ush-tag is-both">' + esc(feeds[l] || l) + '</span>';
                     }).join(' ') + '</td>' +
-                    '<td class="utm-c-num">' + esc(num(x.count)) + '</td>' +
-                    '<td class="utm-c-num ush-nowrap">' + esc(ago(x.last)) + '</td>' +
-                    '<td class="ush-c-act">' + checkBtn(x.remote) + '</td></tr>';
+                    '<td class="ush-nowrap">' + esc(ago(x.last)) + '<small>' + esc(plural(x.count, 'try', 'tries')) + '</small></td>' +
+                    '<td class="ush-c-act">' + allowBtn(x.remote) + checkBtn(x.remote) + '</td></tr>';
             }).join('') + '</tbody></table></div>');
     }
 
@@ -559,7 +636,7 @@
                     '<td>' + remoteHtml(h.remote, h.cc, h.org) + '</td>' +
                     '<td class="ush-nowrap">' + esc((h.proto || '').toUpperCase() + (h.port ? ' ' + h.port : '')) + '</td>' +
                     '<td class="utm-c-hide utm-muted">' + esc(h.iface || '') + '</td>' +
-                    '<td class="ush-c-act">' + checkBtn(h.remote) + '</td></tr>';
+                    '<td class="ush-c-act">' + allowBtn(h.remote) + checkBtn(h.remote) + '</td></tr>';
             }).join('') + '</tbody></table></div>');
     }
 
@@ -597,8 +674,11 @@
             return;
         }
         var rows = [];
-        rows.push(['Status', c.allowed ? '<span class="ush-pill is-good">On the never-block list</span>' :
-            pill(c.blocked, 'Blocked by Shield', c.public ? 'Not blocked' : 'Private address')]);
+        var al = allowedEntry(c.ip);
+        rows.push(['Status', c.allowed ? '<span class="ush-pill is-good">Allowed · ' + esc(al ? left(al) : (c.allow_until === -1 ? 'always' : 'for now')) + '</span>' +
+            (al ? ' <button type="button" class="btn btn-default btn-xs" data-ush-unallow="' + esc(al.net) + '">Block again</button>' : '') :
+            pill(c.blocked, 'Blocked by Shield', c.public ? 'Not blocked' : 'Private address') +
+            (c.blocked ? ' ' + allowBtn(c.ip) : '')]);
         if (c.cc) {
             rows.push(['Country', flag(c.cc) + ' ' + esc(countryName(c.cc)) + (c.country_blocked ? ' <span class="ush-tag is-both">blocked country</span>' : '')]);
         }
@@ -632,6 +712,58 @@
             '<dl class="ush-dl">' + rows.map(function (r) {
                 return '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>';
             }).join('') + '</dl>' + links);
+    }
+
+    /* ------------------------------------------------------- allow menu */
+    function closeMenu() {
+        if (menu) {
+            menu.remove();
+            menu = null;
+        }
+    }
+
+    function openMenu(btn) {
+        closeMenu();
+        var ip = btn.getAttribute('data-ush-allow');
+        menu = document.createElement('div');
+        menu.className = 'ush-menu';
+        menu.setAttribute('role', 'menu');
+        menu.innerHTML = '<div class="ush-menu-head">Allow ' + esc(ip) + ' for</div>' + DUR.map(function (d) {
+            return '<button type="button" role="menuitem" data-ush-dur="' + d[0] + '">' + esc(d[1]) + '</button>';
+        }).join('');
+        menu.__ip = ip;
+        root.appendChild(menu);
+        var r = btn.getBoundingClientRect();
+        var rr = root.getBoundingClientRect();
+        var w = menu.offsetWidth;
+        menu.style.left = Math.max(0, Math.min(r.right - rr.left - w, rr.width - w)) + 'px';
+        menu.style.top = (r.bottom - rr.top + 4) + 'px';
+        menu.querySelector('button').focus();
+    }
+
+    function allow(ip, dur) {
+        closeMenu();
+        post(API + 'allow', { address: ip, duration: dur }).then(function (r) {
+            if (r && r.ok !== false && (r.ok || r.result === 'saved')) {
+                Promise.all([load(), loadHits(), loadAlerts()]).then(function () {
+                    if (S.check && S.check.ip === ip) {
+                        runCheck(ip);
+                    }
+                });
+            } else {
+                window.alert((r && (r.error || (r.errors || []).join(' '))) || 'Could not allow this address.');
+            }
+        });
+    }
+
+    function unallow(net) {
+        post(API + 'unallow', { address: net }).then(function () {
+            Promise.all([load(), loadHits(), loadAlerts()]).then(function () {
+                if (S.check && S.check.ip) {
+                    runCheck(S.check.ip);
+                }
+            });
+        });
     }
 
     /* ------------------------------------------------------------- actions */
@@ -791,6 +923,26 @@
     }
 
     function onClick(e) {
+        var ab = e.target.closest && e.target.closest('[data-ush-allow]');
+        if (ab) {
+            if (menu && menu.__ip === ab.getAttribute('data-ush-allow')) {
+                closeMenu();
+            } else {
+                openMenu(ab);
+            }
+            return;
+        }
+        var du = e.target.closest && e.target.closest('[data-ush-dur]');
+        if (du && menu) {
+            allow(menu.__ip, du.getAttribute('data-ush-dur'));
+            return;
+        }
+        closeMenu();
+        var ua = e.target.closest && e.target.closest('[data-ush-unallow]');
+        if (ua) {
+            unallow(ua.getAttribute('data-ush-unallow'));
+            return;
+        }
         var a = e.target.closest && e.target.closest('[data-ush-action]');
         if (a) {
             var act = a.getAttribute('data-ush-action');

@@ -202,6 +202,81 @@ class ShieldController extends ApiControllerBase
         }, sprintf('UniSense Shield: unblocked country %s', $cc));
     }
 
+    /** a POST field, sent as a form or as a JSON body */
+    private function input($key)
+    {
+        $v = $this->request->getPost($key);
+        if ($v === null) {
+            $body = json_decode($this->request->getRawBody(), true);
+            $v = is_array($body) ? ($body[$key] ?? null) : null;
+        }
+        return is_scalar($v) ? (string)$v : '';
+    }
+
+    private function address($a)
+    {
+        $a = trim((string)$a);
+        $parts = explode('/', $a, 2);
+        if (filter_var($parts[0], FILTER_VALIDATE_IP) === false) {
+            return null;
+        }
+        if (count($parts) == 2 && (!ctype_digit($parts[1]) || (int)$parts[1] > 128)) {
+            return null;
+        }
+        return $a;
+    }
+
+    /**
+     * POST {address, duration: 1h|6h|24h|1mo|restart|forever}: let a flagged address through
+     */
+    public function allowAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['ok' => false, 'error' => 'POST required'];
+        }
+        $addr = $this->address($this->input('address'));
+        $dur = $this->input('duration');
+        if ($addr === null) {
+            return ['ok' => false, 'error' => 'invalid address'];
+        }
+        if ($dur === 'forever') {
+            $r = $this->change(function ($s) use ($addr) {
+                $s['allowlist'][] = $addr;
+                return $s;
+            }, sprintf('UniSense Shield: never block %s', $addr));
+            // a timed exception for the same address is no longer needed
+            (new Backend())->configdpRun('unisense shield unallow', [$addr]);
+            return ['ok' => ($r['result'] ?? '') === 'saved'] + $r;
+        }
+        if (!in_array($dur, ['1h', '6h', '24h', '1mo', 'restart'])) {
+            return ['ok' => false, 'error' => 'unknown duration'];
+        }
+        $out = json_decode(trim((new Backend())->configdpRun('unisense shield allow', [$addr, $dur], false, 120)), true);
+        return is_array($out) ? $out : ['ok' => false, 'error' => 'no response from configd'];
+    }
+
+    /**
+     * POST {address}: block it again (timed exception or never-block entry)
+     */
+    public function unallowAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['ok' => false, 'error' => 'POST required'];
+        }
+        $addr = $this->address($this->input('address'));
+        if ($addr === null) {
+            return ['ok' => false, 'error' => 'invalid address'];
+        }
+        if (in_array($addr, $this->settings()['allowlist'])) {
+            $this->change(function ($s) use ($addr) {
+                $s['allowlist'] = array_values(array_diff($s['allowlist'], [$addr]));
+                return $s;
+            }, sprintf('UniSense Shield: block %s again', $addr));
+        }
+        $out = json_decode(trim((new Backend())->configdpRun('unisense shield unallow', [$addr], false, 120)), true);
+        return is_array($out) ? $out : ['ok' => false, 'error' => 'no response from configd'];
+    }
+
     public function statusAction()
     {
         return $this->runJson('unisense shield status', 60);

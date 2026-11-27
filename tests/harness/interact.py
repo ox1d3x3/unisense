@@ -429,7 +429,7 @@ def main():
         print('Lobby: Shield')
         from server import Handler as _H
         _H.SH.update({'enabled': True, 'countries': ['RU', 'KP'], 'feeds': ['spamhaus', 'feodo', 'et', 'cins', 'dshield'],
-                      'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0})
+                      'allowlist': ['203.0.113.7'], 'vtkey': True, 'abuseipdbkey': False, 'ack': 0, 'allows': {}})
         ctx = b.new_context(viewport={'width': 1440, 'height': 1000})
         pg = ctx.new_page(); errs = []; watch(pg, errs)
         posts = []
@@ -462,6 +462,31 @@ def main():
         check('Blocked by Shield' in res and 'Feodo' in res and '9 malicious' in res, 'address check: lists and VirusTotal')
         pg.click('[data-ush-action="ack"]'); pg.wait_for_timeout(800)
         check(any(u.endswith('/api/unisense/shield/ack') for u, _, _ in posts) and badge.count() == 0, 'mark as seen clears the menu badge')
+        check('&gt;' not in pg.inner_text('[data-ush="checkup"]') and 'Services > Unbound DNS' in pg.inner_text('[data-ush="checkup"]'),
+              'text the API escaped is shown once-escaped (no "&gt;")')
+        check('1 country' in pg.inner_text('[data-ush="stats"]') or ' countries' in pg.inner_text('[data-ush="stats"]'), 'country count worded')
+        pg.click('[data-ush="alerts"] [data-ush-allow="50.16.16.211"]'); pg.wait_for_timeout(300)
+        check(pg.locator('.ush-menu [data-ush-dur]').count() == 6, 'Allow opens the six durations')
+        pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+        check(pg.locator('.ush-menu').count() == 0, 'Escape closes the menu')
+        pg.click('[data-ush="alerts"] [data-ush-allow="50.16.16.211"]'); pg.wait_for_timeout(200)
+        pg.click('.ush-menu [data-ush-dur="24h"]')
+        try:
+            pg.wait_for_function("document.querySelectorAll('[data-ush=allows] li').length === 1", timeout=5000)
+        except Exception:
+            pass
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/shield/allow')]
+        check(sent and sent[-1] == {'address': '50.16.16.211', 'duration': '24h'}, f'allow posted ({sent[-1:]})')
+        check('h left' in pg.inner_text('[data-ush="alerts"]') and pg.locator('[data-ush="allows"] li').count() == 1,
+              'alert shows the time left; listed under Allowed addresses')
+        pg.click('[data-ush="allows"] [data-ush-unallow]')
+        try:
+            pg.wait_for_function("document.querySelectorAll('[data-ush=allows] li').length === 0 && "
+                                 "!!document.querySelector('[data-ush=alerts] [data-ush-allow=\"50.16.16.211\"]')", timeout=5000)
+        except Exception:
+            pass
+        check(any(u.endswith('/shield/unallow') for u, _, _ in posts) and pg.locator('[data-ush="allows"] li').count() == 0
+              and pg.locator('[data-ush="alerts"] [data-ush-allow="50.16.16.211"]').count() == 1, 'block again')
         sw = pg.evaluate("document.documentElement.scrollWidth")
         check(sw <= 1440, f'no horizontal overflow ({sw})')
         check(not errs, 'no console errors: ' + '; '.join(errs))
