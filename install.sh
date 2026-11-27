@@ -45,6 +45,8 @@ TRAFFICMAP="${BASE}/scripts/unisense/trafficmap.py"
 HEAL="${BASE}/scripts/unisense/heal.sh"
 SHIELD="${BASE}/scripts/unisense/shield.py"
 SETUPSHIELD="${BASE}/scripts/unisense/setup_shield.php"
+SETUPPRIVACY="${BASE}/scripts/unisense/setup_privacy.php"
+PRIVACY="${BASE}/scripts/unisense/privacy.py"
 DB_DIR="${PREFIX}/var/db/unisense"
 SYSHOOK_DIR="${PREFIX}/usr/local/etc/rc.syshook.d"
 CONFIGCTL="${UNISENSE_CONFIGCTL:-/usr/local/sbin/configctl}"
@@ -214,6 +216,20 @@ keep_copy() {
 backend_off() {
 	if [ -x "$PHP" ] && [ -f "$SETUPCRON" ]; then
 		"$PHP" "$SETUPCRON" remove >/dev/null 2>&1 && [ -x "$CONFIGCTL" ] && "$CONFIGCTL" cron restart >/dev/null 2>&1
+	fi
+	# Privacy: take UniSense's Unbound policy, DNS rules and port forwards out
+	if [ -x "$PHP" ] && [ -f "$SETUPPRIVACY" ]; then
+		if out="$("$PHP" "$SETUPPRIVACY" remove 2>&1)"; then
+			case "$out" in
+			*dnsbl*) [ -x "$CONFIGCTL" ] && { "$CONFIGCTL" template reload "OPNsense/Unbound/*" >/dev/null 2>&1; "$CONFIGCTL" unbound dnsbl >/dev/null 2>&1; } ;;
+			esac
+			case "$out" in
+			*filter*|*nat*) [ -x "$CONFIGCTL" ] && "$CONFIGCTL" filter reload >/dev/null 2>&1 ;;
+			esac
+			[ "$out" != "none" ] && ok "Privacy policy and DNS rules removed"
+		else
+			warn "could not remove the Privacy settings; delete the \"UniSense Privacy\" blocklist policy and rules by hand"
+		fi
 	fi
 	# Shield: empty its tables, then take its rules and aliases out of the firewall
 	if [ -x "$CONFIGCTL" ] && [ -f "$SHIELD" ]; then
@@ -426,6 +442,8 @@ do_install() {
 	[ -f "$TRAFFICMAP" ] && chmod 755 "$TRAFFICMAP"
 	[ -f "$SHIELD" ] && chmod 755 "$SHIELD"
 	[ -f "$SETUPSHIELD" ] && chmod 755 "$SETUPSHIELD"
+	[ -f "$SETUPPRIVACY" ] && chmod 755 "$SETUPPRIVACY"
+	[ -f "$PRIVACY" ] && chmod 755 "$PRIVACY"
 
 	if [ -d "$THEME_DIR" ]; then
 		mv "$THEME_DIR" "${THEME_DIR}.old"

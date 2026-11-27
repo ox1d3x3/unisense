@@ -73,6 +73,12 @@ UniSense survives OPNsense firmware updates: it checks itself after every update
     <td align="center"><sub><b>Block a country right from its connections</b></sub></td>
   </tr>
   <tr>
+    <td colspan="2"><img src="docs/screenshots/privacy-dark.png" alt="Privacy: ad and tracker blocking"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub><b>Privacy: ad and tracker blocking, gaming-safe, with a query log</b></sub></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/screenshots/grid-light.png" alt="A data grid page"></td>
     <td width="50%"><img src="docs/screenshots/dialog-light.png" alt="An edit dialog"></td>
   </tr>
@@ -139,6 +145,13 @@ UniSense survives OPNsense firmware updates: it checks itself after every update
 - **Alerts** when a device on your network tries to reach a known-bad address — usually the first sign of an infected device — with a red count on the menu
 - Live counters, the latest blocks, an **address check** (country, network, which lists, and VirusTotal / AbuseIPDB scores with a free API key) and a short **security checkup** of your settings
 - **Gaming-safe**: just firewall table lookups (no packet inspection, no added latency), and scanner lists only ever block inbound
+
+**Privacy** (Lobby → Privacy)
+- **Ad and tracker blocking for every device**, like Pi-hole or AdGuard, built into the firewall: one switch, three levels (Light, Balanced, Strict) on the hagezi lists that ship with OPNsense, plus scams, pop-ups, gambling, social networks, adult content and DNS-over-HTTPS / VPN services
+- **Gaming-safe** by default: logins, stores, matchmaking, anti-cheat and voice for PlayStation, Xbox, Steam, Battle.net, Ubisoft, Activision, EA, Epic, Riot and Discord are never blocked
+- A dashboard: queries and share blocked, the last 24 hours, top blocked domains, top domains, busiest devices, and a searchable query log with **Allow / Block** on every line
+- **Already run AdGuard Home?** Connect it instead: the same dashboard, allow / block and its filtering switch
+- **Stops devices going around it**: sends hard-coded DNS (8.8.8.8) to the firewall and refuses DNS-over-TLS to other servers
 
 **Coverage**
 - Every MVC page: forms, tabs, data grids (Tabulator), edit dialogs, dropdowns, tooltips, popovers, the status dialog
@@ -285,6 +298,32 @@ Access is a separate privilege, **Lobby: Traffic Map**.
 
 Access is a separate privilege, **Lobby: Shield**. Uninstalling UniSense removes the Shield rules and aliases.
 
+## Privacy
+
+**Lobby → Privacy** blocks ads, trackers and malware domains for every device on the network. Pick where the blocking happens:
+
+- **Built in (recommended).** The firewall's own DNS (Unbound) does it, so there is nothing to install. UniSense adds one policy, **UniSense Privacy**, to *Services → Unbound DNS → Blocklist* (any policies of your own keep working) and switches on Unbound's query statistics for the dashboard. Lists come with OPNsense:
+
+  | Level | Lists | Good for |
+  |---|---|---|
+  | Light | hagezi LIGHT + threat feeds (mini) | almost nothing breaks |
+  | **Balanced** | hagezi PRO + threat feeds | recommended |
+  | Strict | hagezi PRO++ + threat feeds + badware hosters | the odd site may need an Allow |
+
+  Extras: scams and fake shops, pop-up ads, gambling, social networks (26.1+), adult content, and DNS-over-HTTPS / VPN / proxy services.
+- **AdGuard Home.** If you already run it on another machine, enter its address and login. UniSense shows its numbers and query log, and Allow / Block go into its custom rules. Lists stay managed in AdGuard Home.
+
+**Gaming-safe** (on by default) keeps logins, stores, matchmaking, anti-cheat and voice working for PlayStation, Xbox, Steam, Battle.net, Ubisoft, Activision, EA, Epic, Riot and Discord, whatever the lists say. With AdGuard Home, one button adds the same allow rules there.
+
+**Allow and block.** Every line of the top lists and the query log has an Allow or Block button; *Your rules* lists them, and you can type a domain. A blocked domain includes all its subdomains.
+
+**Stop devices going around it.** Some devices use their own DNS. Choose the interfaces (LAN, IoT, Guest …), then:
+- *Send all plain DNS to this firewall* (built in, OPNsense 26.1+): a port forward answers hard-coded 8.8.8.8 / 1.1.1.1 queries from the firewall, so blocking still applies;
+- *Refuse DNS-over-TLS to other servers*: phones using "Private DNS" fall back to yours;
+- DNS-over-HTTPS hides in normal web traffic: switch on the *DNS-over-HTTPS, VPN and proxy services* extra (it also blocks public VPN services, so leave it off if you use one).
+
+Access is a separate privilege, **Lobby: Privacy**. Switching Privacy off disables the policy and removes the rules; uninstalling UniSense removes the policy, the rule and the port forwards.
+
 ---
 
 ## Using the theme
@@ -370,6 +409,12 @@ No. Shield only adds lookups in pf's address tables (a radix tree: microseconds,
 <summary><b>Something stopped working after I turned Shield on.</b></summary>
 
 Open **Lobby → Shield → Recent blocks**, find the address and click 🔍 to see which list or country blocked it. Then click 🔓 to allow it (for an hour, a day, a month or always), unblock the country, or switch that list off. To switch everything off at once, turn the *Threat lists* switch off and remove the blocked countries; the rules stay but match nothing.
+</details>
+
+<details>
+<summary><b>A site or app stopped working after I turned on Privacy.</b></summary>
+
+Open **Lobby → Privacy**, filter the query log to *Blocked* and type part of the site's name or the device: click **Allow** on the domain. If several domains are involved, step the level down to *Balanced* or *Light*. Games should not be affected (gaming-safe is on by default); if one is, tell me which so it can be added.
 </details>
 
 <details>

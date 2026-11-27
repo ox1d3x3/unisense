@@ -9,5 +9,8 @@
         <Shield VisibleName="Shield" order="2" url="/ui/unisense/shield" cssClass="fa fa-shield-halved fa-fw">
             <item url="/ui/unisense/shield/*" visibility="hidden"/>
         </Shield>
+        <Privacy VisibleName="Privacy" order="2" url="/ui/unisense/privacy" cssClass="fa fa-user-shield fa-fw">
+            <item url="/ui/unisense/privacy/*" visibility="hidden"/>
+        </Privacy>
     </Lobby>
 </menu>

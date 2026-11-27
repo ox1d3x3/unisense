@@ -34,3 +34,7 @@ Each list is fetched directly from its publisher and used only to block traffic 
 | Tor bulk exit list (optional) | [The Tor Project](https://www.torproject.org/) | public |
 
 VirusTotal and AbuseIPDB are used only when you add your own API key and check an address; their terms apply to that key.
+
+## Privacy block lists (downloaded by OPNsense's Unbound when switched on)
+
+Privacy uses the blocklists that ship with OPNsense's Unbound DNS: [hagezi DNS blocklists](https://github.com/hagezi/dns-blocklists) (GPL-3.0) and [OISD](https://oisd.nl) (adult content extra). They are downloaded and refreshed by Unbound itself; UniSense only selects them.

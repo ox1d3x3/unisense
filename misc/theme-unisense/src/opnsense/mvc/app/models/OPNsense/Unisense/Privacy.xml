@@ -1,0 +1,72 @@
+<model>
+    <mount>//OPNsense/unisense/privacy</mount>
+    <version>1.0.0</version>
+    <description>UniSense Privacy: ad and tracker blocking (Unbound or AdGuard Home)</description>
+    <items>
+        <!-- off | unbound (built in) | adguard (AdGuard Home on another machine) -->
+        <provider type="OptionField">
+            <Required>Y</Required>
+            <Default>off</Default>
+            <OptionValues>
+                <off>Off</off>
+                <unbound>Built in (Unbound DNS)</unbound>
+                <adguard>AdGuard Home</adguard>
+            </OptionValues>
+        </provider>
+        <!-- built in: how much to block -->
+        <level type="OptionField">
+            <Required>Y</Required>
+            <Default>balanced</Default>
+            <OptionValues>
+                <light>Light</light>
+                <balanced>Balanced</balanced>
+                <strict>Strict</strict>
+            </OptionValues>
+        </level>
+        <extras type="TextField">
+            <Mask>/^((scams|popups|gambling|social|adult|bypass)(,(scams|popups|gambling|social|adult|bypass)){0,5})?$/</Mask>
+            <ValidationMessage>Unknown extra list.</ValidationMessage>
+        </extras>
+        <gaming type="BooleanField">
+            <Required>Y</Required>
+            <Default>1</Default>
+        </gaming>
+        <!-- domains, comma separated -->
+        <allow type="TextField">
+            <Mask>/^([a-z0-9*_.-]+(,[a-z0-9*_.-]+){0,499})?$/i</Mask>
+            <ValidationMessage>Use domain names separated by commas.</ValidationMessage>
+        </allow>
+        <block type="TextField">
+            <Mask>/^([a-z0-9*_.-]+(,[a-z0-9*_.-]+){0,499})?$/i</Mask>
+            <ValidationMessage>Use domain names separated by commas.</ValidationMessage>
+        </block>
+        <!-- AdGuard Home -->
+        <agh_url type="TextField">
+            <Mask>/^(https?:\/\/[a-z0-9.\-\[\]:]+(:[0-9]{1,5})?\/?)?$/i</Mask>
+            <ValidationMessage>Use the AdGuard Home address, e.g. http://192.168.1.5:3000</ValidationMessage>
+        </agh_url>
+        <agh_user type="TextField">
+            <Mask>/^[^\s,]{0,64}$/</Mask>
+        </agh_user>
+        <agh_pass type="TextField">
+            <Mask>/^[^\s]{0,128}$/</Mask>
+        </agh_pass>
+        <!-- bypass protection -->
+        <redirect type="BooleanField">
+            <Required>Y</Required>
+            <Default>0</Default>
+        </redirect>
+        <dot type="BooleanField">
+            <Required>Y</Required>
+            <Default>0</Default>
+        </dot>
+        <interfaces type="TextField">
+            <Mask>/^([a-z0-9_]{1,32}(,[a-z0-9_]{1,32}){0,31})?$/</Mask>
+            <Default>lan</Default>
+        </interfaces>
+        <!-- what UniSense created: the Unbound policy, firewall and NAT rules ("kind:uuid,...") -->
+        <managed type="TextField">
+            <Mask>/^([a-z0-9-]+:[0-9a-f-]{36}(,[a-z0-9-]+:[0-9a-f-]{36}){0,63})?$/</Mask>
+        </managed>
+    </items>
+</model>

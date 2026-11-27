@@ -259,6 +259,8 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         if path.startswith('/api/unisense/trafficmap/'):
             return self.trafficmap_api(path[len('/api/unisense/trafficmap/'):])
+        if path.startswith('/api/unisense/privacy/'):
+            return self.privacy_api(path[len('/api/unisense/privacy/'):])
         if path.startswith('/api/unisense/shield/'):
             return self.shield_api(path[len('/api/unisense/shield/'):])
         if path.startswith('/api/unisense/networkmap/'):
@@ -633,6 +635,86 @@ class Handler(SimpleHTTPRequestHandler):
                 cc = action.split('/', 1)[1].upper()
                 sh['countries'] = [c for c in sh['countries'] if c != cc]
             return self._json({'result': 'saved', 'settings': self.sh_settings(), 'apply': {'ok': True, 'killed': killed, 'errors': []}})
+        return self._json({'ok': False, 'error': 'unknown action'})
+
+    # ---- Privacy (scripts/unisense/privacy.py output) ----
+    PV = {'provider': __import__('os').environ.get('PV_PROVIDER', 'unbound'), 'level': 'balanced', 'extras': ['scams'], 'gaming': True, 'allow': ['gigabyte.com'],
+          'block': ['tiktok.com'], 'agh_url': '', 'agh_user': '', 'agh_pass': False, 'redirect': True, 'dot': False,
+          'interfaces': ['lan'], 'protection': True}
+
+    def pv_settings(self):
+        return {k: v for k, v in self.PV.items() if k != 'protection'}
+
+    def privacy_api(self, action):
+        pv = self.PV
+        now = int(time.time())
+        if action == 'get':
+            return self._json({'settings': self.pv_settings(), 'info': {
+                'extras': ['scams', 'popups', 'gambling', 'social', 'adult', 'bypass'], 'gaming': ['xboxlive.com'],
+                'interfaces': [{'name': 'lan', 'descr': 'LAN'}, {'name': 'opt1', 'descr': 'IoT'}, {'name': 'opt2', 'descr': 'Guest'}],
+                'redirect': True, 'unbound': True, 'policies': 1}})
+        if action == 'summary':
+            if pv['provider'] == 'off':
+                return self._json({'ok': False, 'provider': 'off'})
+            r = random.Random(3)
+            series = [{'t': now - (143 - i) * 600, 'total': int(180 + 120 * abs(((i % 144) - 80) / 80.0) * r.uniform(.6, 1.2)),
+                       'blocked': 0} for i in range(144)]
+            for x in series:
+                x['blocked'] = int(x['total'] * r.uniform(.08, .22))
+            tot = sum(x['total'] for x in series)
+            blk = sum(x['blocked'] for x in series)
+            d = {'ok': True, 'provider': pv['provider'], 'total': tot, 'blocked': blk, 'pct': round(100.0 * blk / tot, 1),
+                 'listed': 412873, 'since': now - 86400 * 3, 'series': series,
+                 'top_domains': [{'domain': d, 'count': c} for d, c in [('www.google.com', 2841), ('i.ytimg.com', 1902), ('graph.facebook.com', 1311),
+                                                                         ('api.steampowered.com', 980), ('gateway.icloud.com', 744), ('pubsub.pubnub.com', 512)]],
+                 'top_blocked': [{'domain': d, 'count': c, 'list': l} for d, c, l in [
+                     ('app-measurement.com', 1204, 'hagezi Multi PRO - Extended protection'), ('ads.tiktok.com', 811, 'hagezi Multi PRO - Extended protection'),
+                     ('telemetry.dropbox.com', 455, 'hagezi Multi PRO - Extended protection'), ('tiktok.com', 120, 'Your blocks'),
+                     ('mobile.events.data.microsoft.com', 98, 'hagezi Multi PRO - Extended protection'), ('b.scorecardresearch.com', 61, 'hagezi Threat Intelligence Feeds')]],
+                 'top_clients': [{'client': '192.168.1.20', 'name': 'desktop', 'count': 14211}, {'client': '192.168.1.42', 'name': 'ps5', 'count': 6022},
+                                 {'client': '192.168.20.15', 'name': '', 'count': 3120}, {'client': '192.168.1.31', 'name': 'iphone', 'count': 2011}]}
+            if pv['provider'] == 'adguard':
+                d.update({'protection': pv['protection'], 'version': 'v0.107.55', 'ms': 11.8})
+            return self._json(d)
+        if action.startswith('log'):
+            r = random.Random(9)
+            doms = [('app-measurement.com', True, 'hagezi Multi PRO - Extended protection'), ('www.google.com', False, ''),
+                    ('i.ytimg.com', False, ''), ('ads.tiktok.com', True, 'hagezi Multi PRO - Extended protection'),
+                    ('api.steampowered.com', False, ''), ('telemetry.dropbox.com', True, 'hagezi Multi PRO - Extended protection')]
+            rows = []
+            for i in range(80):
+                dmn, b, l = doms[r.randrange(len(doms))]
+                ip = r.choice(['192.168.1.20', '192.168.1.42', '192.168.20.15', '192.168.1.31'])
+                rows.append({'t': now - i * 7, 'client': ip, 'ip': ip, 'domain': dmn, 'type': r.choice(['A', 'AAAA', 'HTTPS']),
+                             'blocked': b, 'list': l, 'source': 'Cache' if r.random() < .4 else 'Recursion', 'rcode': 'NOERROR',
+                             'ms': 0 if b else r.randint(0, 40)})
+            return self._json({'ok': True, 'rows': rows})
+        if action == 'test':
+            return self._json({'ok': True, 'version': 'v0.107.55', 'protection': True})
+        if self.command != 'POST':
+            return self._json({'ok': False, 'error': 'POST required'})
+        body = self.sh_body()
+        if action == 'set':
+            for k, v in (body.get('privacy') or {}).items():
+                if k in ('gaming', 'redirect', 'dot'):
+                    pv[k] = str(v) in ('1', 'true', 'True')
+                elif k == 'agh_pass':
+                    pv[k] = bool(v)
+                else:
+                    pv[k] = v
+            return self._json({'result': 'saved', 'settings': self.pv_settings(), 'applied': ['dnsbl']})
+        if action == 'domain':
+            dmn, act = body.get('domain'), body.get('action')
+            pv['allow'] = [x for x in pv['allow'] if x != dmn]
+            pv['block'] = [x for x in pv['block'] if x != dmn]
+            if act in ('allow', 'block'):
+                pv[act] = pv[act] + [dmn]
+            return self._json({'ok': True, 'result': 'saved', 'settings': self.pv_settings()})
+        if action == 'protection':
+            pv['protection'] = str(body.get('on')) in ('1', 'true')
+            return self._json({'ok': True})
+        if action == 'gaming':
+            return self._json({'ok': True, 'added': 31})
         return self._json({'ok': False, 'error': 'unknown action'})
 
     def tm_db(self):

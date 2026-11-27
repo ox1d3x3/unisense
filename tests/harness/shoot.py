@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright
 from server import serve
 
 HERE = Path(__file__).resolve().parent
-PAGES = ['dashboard', 'networkmap', 'trafficmap', 'shield', 'cron', 'syslog', 'monit', 'legacy', 'login']
+PAGES = ['dashboard', 'networkmap', 'trafficmap', 'shield', 'privacy', 'cron', 'syslog', 'monit', 'legacy', 'login']
 VIEWPORTS = {'desktop': (1440, 1000), 'mobile': (390, 844)}
 IGNORED = ('favicon.ico',)
 

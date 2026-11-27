@@ -989,11 +989,16 @@ def cmd_checkup():
                 dnsbl = True
         if text(ub, 'dnsbl/enabled') == '1':
             dnsbl = True
-    add('dnsbl', dnsbl or not unbound_on, 'DNS blocklist',
-        'Unbound blocks known malware and tracking domains.' if dnsbl else
-        'Shield blocks bad addresses; Unbound can also block bad domain names. Turn on a blocklist under '
-        'Services: Unbound DNS: Blocklist.' if unbound_on else 'Unbound DNS is not in use.',
-        '/ui/unbound/dnsbl', 'info')
+    agh = text(root.find('OPNsense/unisense/privacy') if root is not None else None, 'provider') == 'adguard'
+    if agh:
+        add('dnsbl', True, 'DNS blocklist', 'AdGuard Home blocks ads, trackers and malware domains (Lobby: Privacy).',
+            '/ui/unisense/privacy')
+    else:
+        add('dnsbl', dnsbl or not unbound_on, 'DNS blocklist',
+            'Unbound blocks known malware and tracking domains.' if dnsbl else
+            'Shield blocks bad addresses; ad, tracker and malware domains can be blocked too: turn on '
+            'Lobby: Privacy.' if unbound_on else 'Unbound DNS is not in use.',
+            '/ui/unisense/privacy', 'info')
     shield_ok = cfg['enabled'] and any(FEED_BY_ID[f]['kind'] == 'threat' for f in cfg['feeds'])
     add('shield', shield_ok, 'Shield threat lists',
         'Botnet and criminal networks are blocked for every device.' if shield_ok else

@@ -275,12 +275,131 @@ t "every list off is saved as empty" '[ "$(printf "%s\n" "$out" | sed -n 6p)" = 
 t "firewall reloaded and tables loaded through configd" 'grep -q "^filter reload" "$S/configd.log" && grep -q "^unisense shield apply kill" "$S/configd.log"' show
 t "list download started when the lists were switched on" 'grep -q "unisense shield update" "$S/configd.log"' show
 
+echo "Privacy (real Unbound / Filter / NAT models)"
+SETUPPRIV=/usr/local/opnsense/scripts/unisense/setup_privacy.php
+cat > "$S/priv.php" <<'PHP'
+<?php
+ini_set('display_errors', 'stderr');
+require_once('script/load_phalcon.php');
+use OPNsense\Core\Config;
+$m = new \OPNsense\Unisense\Privacy();
+$cmd = $argv[1];
+if ($cmd === 'set') {
+    $set = [];
+    for ($i = 2; $i + 1 < count($argv); $i += 2) {
+        $set[$argv[$i]] = $argv[$i + 1];
+    }
+    $m->setNodes($set);
+    $errs = [];
+    foreach ($m->performValidation() as $e) {
+        $errs[] = $e->getField();
+    }
+    if (count($errs)) {
+        echo 'invalid:', implode(',', $errs), "\n";
+        exit(0);
+    }
+    $m->serializeToConfig();
+    Config::getInstance()->save();
+    echo "saved\n";
+} elseif ($cmd === 'policy') {
+    $u = new \OPNsense\Unbound\Unbound();
+    $id = $m->managedIds()['policy'] ?? '';
+    $n = $id ? $u->getNodeByReference('dnsbl.blocklist.' . $id) : null;
+    echo json_encode($n === null ? null : [
+        'enabled' => (string)$n->enabled, 'type' => (string)$n->type, 'allow' => (string)$n->allowlists,
+        'wildcards' => (string)$n->wildcards, 'descr' => (string)$n->description, 'stats' => (string)$u->general->stats,
+    ]), "\n";
+} elseif ($cmd === 'pf') {
+    $filter = new \OPNsense\Firewall\Filter();
+    $id = $m->managedIds()['dot'] ?? '';
+    $n = $id ? $filter->getNodeByReference('rules.rule.' . $id) : null;
+    if ($n === null) {
+        echo "none\n";
+        exit(0);
+    }
+    $ifs = ['lan' => ['if' => 'em1', 'descr' => 'LAN']];
+    $gws = [];
+    echo trim(preg_replace('/\s+/', ' ', (string)(new \OPNsense\Firewall\FilterRule($ifs, $gws, $n->serialize())))), "\n";
+} elseif ($cmd === 'nat') {
+    if (!class_exists('\OPNsense\Firewall\DNat')) {
+        echo "n/a\n";
+        exit(0);
+    }
+    $nat = new \OPNsense\Firewall\DNat();
+    $out = [];
+    foreach ($m->managedIds() as $k => $id) {
+        if (strpos($k, 'rdr-') === 0) {
+            $n = $nat->getNodeByReference('rule.' . $id);
+            $out[] = $n === null ? "$k:missing" : "$k:" . (string)$n->interface . ' ' . (string)$n->protocol . ' !' .
+                (string)$n->destination->network . ':' . (string)$n->destination->port . ' -> ' . (string)$n->target . ':' .
+                (string)$n->{'local-port'};
+        }
+    }
+    echo count($out) ? implode(';', $out) : 'none', "\n";
+}
+PHP
+pv() { "$PHP" "$S/priv.php" "$@" 2>>"$S/priv.err"; }
+out="$("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")"
+t "nothing made before Privacy is used" '[ "$out" = unchanged ] && [ "$(pv policy)" = null ]' show
+t "settings validated" '[ "$(pv set level extreme)" = invalid:level ] && [ "$(pv set extras gambling,evil)" = invalid:extras ] && [ "$(pv set agh_url "javascript:x")" = invalid:agh_url ] && [ "$(pv set allow "a b")" = invalid:allow ]' show
+out="$(pv set provider unbound level balanced extras gambling,bypass,social allow gigabyte.com block tiktok.com dot 1 redirect 1 interfaces lan)"
+t "settings saved" '[ "$out" = saved ]' show
+out="$("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")"
+t "built in: policy, statistics, firewall rule (and port forward where supported) created" 'printf "%s" "$out" | grep -q "dnsbl" && printf "%s" "$out" | grep -q "stats" && printf "%s" "$out" | grep -q "filter"' show
+pol="$(pv policy)"
+t "policy: hagezi PRO + threat intel + extras this core has" 'printf "%s" "$pol" | grep -q "\"type\":\"hgz003,hgz011,hgz019,hgz014" && printf "%s" "$pol" | grep -q "\"enabled\":\"1\""' show
+t "policy: gaming-safe and your allows as patterns; your blocks as wildcards" 'printf "%s" "$pol" | grep -q "xboxlive" && printf "%s" "$pol" | grep -qF "(^|\\\\.)gigabyte\\\\.com$" && printf "%s" "$pol" | grep -q "\"wildcards\":\"tiktok.com\""' show
+t "Unbound statistics switched on for the dashboard" 'printf "%s" "$pol" | grep -q "\"stats\":\"1\""'
+pf="$(pv pf)"
+t "pf: DNS-over-TLS to anything but the firewall refused on LAN" 'printf "%s" "$pf" | grep -E "block return in quick on em1 inet proto (tcp|\{ ?tcp udp ?\}|\{ ?tcp,? ?udp ?\})" >/dev/null && printf "%s" "$pf" | grep -qE "to ! ?\(self\)|to \{ ?! ?\(self\)" && printf "%s" "$pf" | grep -q "port 853\|port = 853\|port {853}"' show
+nat="$(pv nat)"
+out="$nat"
+t "plain DNS on LAN goes to the firewall (26.1 and later)" '[ "$nat" = n/a ] || [ "$nat" = "rdr-lan:lan tcp/udp !lanip:53 -> 127.0.0.1:53" ]' show
+t "second sync changes nothing" '[ "$("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")" = unchanged ]'
+pv set provider off >/dev/null
+out="$("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")"
+t "off: policy kept but disabled, rules removed" 'printf "%s" "$(pv policy)" | grep -q "\"enabled\":\"0\"" && [ "$(pv pf)" = none ] && { [ "$(pv nat)" = n/a ] || [ "$(pv nat)" = none ]; }' show
+out="$(pv set provider adguard agh_url http://192.168.1.5:3000) / $("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")" || true
+t "AdGuard Home settings applied" 'printf "%s" "$out" | grep -q "^saved / filter"' show
+pf="$(pv pf)"
+t "AdGuard Home: DNS-over-TLS allowed only to that server" 'printf "%s" "$pf" | grep -q "192.168.1.5" && { [ "$(pv nat)" = n/a ] || [ "$(pv nat)" = none ]; }' show
+pv set provider unbound >/dev/null
+"$PHP" "$SETUPPRIV" sync >/dev/null 2>&1 || true
+
+echo "Privacy API controller (real models, configd stand-in)"
+cat > "$S/papi.php" <<'PHP'
+<?php
+ini_set('display_errors', 'stderr');
+require_once('script/load_phalcon.php');
+$c = new \OPNsense\Unisense\Api\PrivacyController();
+$change = new ReflectionMethod($c, 'change');
+$change->setAccessible(true);
+$get = $c->getAction();
+echo json_encode(['extras' => $get['info']['extras'], 'ifs' => array_column($get['info']['interfaces'], 'name'),
+    'redirect' => $get['info']['redirect']]), "\n";
+$r = $change->invoke($c, function ($s) { $s['allow'][] = 'Example.COM.'; $s['level'] = 'strict'; return $s; }, 't');
+echo $r['result'], ' ', implode(',', $r['settings']['allow']), ' ', $r['settings']['level'], ' ', implode('+', $r['applied']), "\n";
+$r = $change->invoke($c, function ($s) { $s['level'] = 'insane'; return $s; }, 't');
+echo $r['result'], ' ', implode(',', array_keys($r['validations'] ?? [])), "\n";
+$r = $change->invoke($c, function ($s) { $s['agh_pass'] = 'pw1'; return $s; }, 't');
+echo $r['result'], ' ', json_encode($r['settings']['agh_pass']), "\n";
+PHP
+: > "$S/configd.log"
+out="$("$PHP" "$S/papi.php" 2>>"$S/priv.err")" || true
+t "what this core offers: extras, LAN interfaces, port forwards from 26.1" 'printf "%s\n" "$out" | sed -n 1p | grep -q "\"ifs\":\[\"lan\"\]" && printf "%s\n" "$out" | sed -n 1p | grep -q "\"bypass\""' show
+t "save: domain cleaned, level changed, Unbound policy updated" 'printf "%s\n" "$out" | sed -n 2p | grep -q "^saved gigabyte.com,example.com strict dnsbl"' show
+t "invalid level refused" '[ "$(printf "%s\n" "$out" | sed -n 3p)" = "failed privacy.level" ]' show
+t "password saved, never sent back" '[ "$(printf "%s\n" "$out" | sed -n 4p)" = "saved true" ] && grep -q "<agh_pass>pw1</agh_pass>" /conf/config.xml' show
+out="$(cat "$S/configd.log")"
+t "Unbound templates and blocklist reloaded through configd" 'grep -q "template reload OPNsense/Unbound/\*" "$S/configd.log" && grep -q "unbound dnsbl" "$S/configd.log"' show
+
 echo "uninstall (real php)"
 out="$(UNISENSE_PREFIX=/ UNISENSE_PHP="$PHP" sh install.sh --uninstall --yes 2>&1)" || true
 t "uninstall finishes without warnings" '! printf "%s" "$out" | grep -q -E "^ ! |Fatal|Warning|Deprecated"' show
 t "theme switched back to opnsense" '[ "$(theme)" = opnsense ]'
 t "device labels kept in config" 'grep -q "Kitchen speaker" /conf/config.xml'
 t "cron jobs removed" '! grep -q "unisense geoip update" /conf/config.xml && ! grep -q "unisense trafficmap sample" /conf/config.xml && ! grep -q "unisense shield update" /conf/config.xml'
+t "Privacy policy and rules removed" '! grep -q "UniSense Privacy" /conf/config.xml || ! grep -q "<description>UniSense Privacy</description>" /conf/config.xml'
 t "Shield rules and aliases removed" '! grep -q "<name>unisense_" /conf/config.xml && ! grep -q "UniSense Shield: blocked countries (" /conf/config.xml && ! grep -q "unisense_geoblock" /conf/config.xml'
 t "firewall reloaded after removing them" 'grep -q "configctl filter reload" "$S/calls"' show
 

@@ -2,6 +2,12 @@
 if [ -x /usr/local/opnsense/scripts/unisense/setup_cron.php ]; then
 	/usr/local/opnsense/scripts/unisense/setup_cron.php remove >/dev/null 2>&1 && configctl cron restart >/dev/null 2>&1
 fi
+# Privacy: take UniSense's Unbound policy, DNS rules and port forwards out
+if [ -x /usr/local/opnsense/scripts/unisense/setup_privacy.php ]; then
+	out="$(/usr/local/opnsense/scripts/unisense/setup_privacy.php remove 2>/dev/null)"
+	case "$out" in *dnsbl*) configctl template reload "OPNsense/Unbound/*" >/dev/null 2>&1; configctl unbound dnsbl >/dev/null 2>&1 ;; esac
+	case "$out" in *filter*|*nat*) configctl filter reload >/dev/null 2>&1 ;; esac
+fi
 # Shield: empty its tables, then take its rules and aliases out of the firewall
 configctl unisense shield clear >/dev/null 2>&1
 if [ -x /usr/local/opnsense/scripts/unisense/setup_shield.php ]; then

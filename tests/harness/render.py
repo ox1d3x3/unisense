@@ -65,6 +65,8 @@ def main():
                            title='Lobby: Traffic Map', vars={}),
         'shield': dict(view='OPNsense/Unisense/shield', url='/ui/unisense/shield',
                        title='Lobby: Shield', vars={}),
+        'privacy': dict(view='OPNsense/Unisense/privacy', url='/ui/unisense/privacy',
+                        title='Lobby: Privacy', vars={}),
         'monit': dict(view='OPNsense/Monit/index', url='/ui/monit', title='Services: Monit: Settings',
                       vars={'formGeneralSettings': get_form(ctrl / 'Monit/forms/general.xml'),
                             'formDialogEditAlert': get_form(ctrl / 'Monit/forms/alerts.xml'),

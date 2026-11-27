@@ -38,6 +38,7 @@ case "$1" in
 	install) if grep -q unisense-cron "$cfg"; then echo exists; else sed -i "s:</opnsense>:<unisense-cron/></opnsense>:" "$cfg"; echo ok; fi ;;
 	remove) sed -i "s:<unisense-cron/>::" "$cfg"; echo ok ;;
 	esac ;;
+*setup_privacy.php) echo none ;;
 *setup_shield.php)
 	case "${2:-}" in
 	remove) if grep -q unisense-shield "$cfg"; then sed -i "s:<unisense-shield/>::" "$cfg"; echo changed; else echo none; fi ;;

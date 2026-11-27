@@ -520,6 +520,71 @@ def main():
         check(not errs, 'no console errors: ' + '; '.join(errs))
         ctx.close()
 
+        # -------------------------------------------------------- Privacy
+        print('Lobby: Privacy')
+        from server import Handler as _H2
+        _H2.PV.update({'provider': 'unbound', 'level': 'balanced', 'extras': ['scams'], 'gaming': True, 'allow': ['gigabyte.com'],
+                       'block': ['tiktok.com'], 'agh_url': '', 'agh_user': '', 'agh_pass': False, 'redirect': True, 'dot': False,
+                       'interfaces': ['lan'], 'protection': True})
+        ctx = b.new_context(viewport={'width': 1440, 'height': 1000})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        posts = []
+        pg.on('request', lambda r: r.method == 'POST' and posts.append((r.url, r.headers.get('x-csrftoken'), r.post_data)))
+        pg.on('dialog', lambda d: d.accept())
+        pg.goto(f'{base}/privacy.html'); pg.wait_for_timeout(3000)
+        check('Blocking ads' in pg.inner_text('[data-upv="state"]') and pg.locator('[data-upv="stats"] .utm-stat').count() == 4,
+              'state and four counters')
+        check(pg.locator('.upv-bars > span').count() == 144, '24 h chart (10-minute bars)')
+        check(pg.locator('[data-upv="top-blocked"] li').count() == 6 and pg.locator('[data-upv="top-domains"] li').count() == 6, 'top lists')
+        check(pg.locator('[data-upv="log"] tbody tr').count() > 20, 'query log')
+        pg.click('[data-upv="top-blocked"] [data-upv-act="allow"] >> nth=0'); pg.wait_for_timeout(900)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/privacy/domain')]
+        check(sent and sent[-1] == {'domain': 'app-measurement.com', 'action': 'allow'} and
+              any(u.endswith('/privacy/domain') and tok for u, tok, _ in posts), f'Allow from the top list (POST with CSRF) {sent[-1:]}')
+        check(pg.locator('.upv-chip.is-allow').count() == 2, 'the allow shows under Your rules')
+        pg.click('.upv-chip.is-block [data-upv-act="remove"]'); pg.wait_for_timeout(900)
+        check(pg.locator('.upv-chip.is-block').count() == 0, 'remove a rule')
+        pg.fill('[data-upv-form="rule"] input', 'doubleclick.net')
+        pg.click('[data-upv-form="rule"] [data-upv-act="block"]'); pg.wait_for_timeout(900)
+        check(pg.locator('.upv-chip.is-block').count() == 1, 'block a typed domain')
+        pg.click('[data-upv-level="strict"]'); pg.wait_for_timeout(900)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/privacy/set')]
+        check(sent and sent[-1] == {'privacy': {'level': 'strict'}} and 'Strict' in pg.inner_text('[data-upv="state"]'), 'level saved')
+        pg.click('[data-upv-set="extra:gambling"] + span'); pg.wait_for_timeout(900)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/privacy/set')]
+        check(sent and sorted(sent[-1]['privacy']['extras']) == ['gambling', 'scams'], 'extra list switched on')
+        pg.click('[data-upv-filter="blocked"]'); pg.wait_for_timeout(200)
+        rows = pg.locator('[data-upv="log"] tbody tr')
+        check(rows.count() > 0 and rows.count() == pg.locator('[data-upv="log"] tbody tr.is-blocked').count(), 'log: blocked only')
+        pg.fill('[data-upv="search"]', 'dropbox'); pg.wait_for_timeout(200)
+        check(all('dropbox' in x for x in pg.locator('[data-upv="log"] .upv-domain').all_inner_texts()), 'log: search')
+        check(pg.evaluate("document.querySelector('.upv-log-wrap').scrollWidth <= document.querySelector('.upv-log-wrap').clientWidth"),
+              'log fits its card')
+        check(pg.locator('[data-upv="agh-link"]').is_hidden(), 'no AdGuard Home link when built in')
+        sw = pg.evaluate("document.documentElement.scrollWidth")
+        check(sw <= 1440, f'no horizontal overflow ({sw})')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+        _H2.PV['provider'] = 'off'
+        ctx = b.new_context(viewport={'width': 390, 'height': 900})
+        pg = ctx.new_page(); errs = []; watch(pg, errs)
+        posts = []
+        pg.on('request', lambda r: r.method == 'POST' and posts.append((r.url, r.headers.get('x-csrftoken'), r.post_data)))
+        pg.goto(f'{base}/privacy.html'); pg.wait_for_timeout(2500)
+        check(pg.locator('.upv-choice').count() == 2 and pg.is_hidden('[data-upv="dash"]'), 'off: the two ways to switch it on')
+        pg.fill('[data-upv-form="agh"] [name="agh_url"]', 'http://192.168.1.5:3000')
+        pg.fill('[data-upv-form="agh"] [name="agh_user"]', 'admin')
+        pg.fill('[data-upv-form="agh"] [name="agh_pass"]', 'pw')
+        pg.click('[data-upv-form="agh"] button[type="submit"]'); pg.wait_for_timeout(1500)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/privacy/set')]
+        check(sent and sent[0]['privacy'] == {'provider': 'adguard', 'agh_url': 'http://192.168.1.5:3000', 'agh_user': 'admin', 'agh_pass': 'pw'},
+              f'connect AdGuard Home {sent[:1]}')
+        check('AdGuard' in pg.inner_text('[data-upv="state"]') and pg.is_visible('[data-upv="agh-link"]'), 'dashboard for AdGuard Home, with a link to it')
+        sw = pg.evaluate("document.documentElement.scrollWidth")
+        check(sw <= 390, f'phone: no horizontal overflow ({sw})')
+        check(not errs, 'no console errors: ' + '; '.join(errs))
+        ctx.close()
+
         # ------------------------------------------------------ tablet widths
         for w in (800, 1024):
             print(f'tablet {w}px')

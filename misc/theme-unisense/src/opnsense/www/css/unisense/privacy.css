@@ -1,0 +1,147 @@
+/*
+ * UniSense for OPNsense — Lobby: Privacy
+ * (c) Ox1d3x3 — BSD 2-Clause License
+ *
+ * Builds on trafficmap.css and shield.css (cards, stats, switches, chips).
+ */
+
+/* ------------------------------------------------------------- setup */
+.upv-setup { margin-bottom: 16px; }
+.upv-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 12px 16px 16px; }
+.upv-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--utm-line);
+  border-radius: var(--utm-radius-sm);
+  background: var(--utm-surface-2);
+}
+.upv-choice.is-recommended { border-color: color-mix(in srgb, var(--utm-accent) 45%, var(--utm-line)); }
+.upv-choice > b { display: flex; align-items: center; gap: 8px; color: var(--utm-heading); font-size: 15px; }
+.upv-choice > b .fa { color: var(--utm-accent); }
+.upv-choice p { margin: 0; color: var(--utm-text-2); font-size: 12.5px; line-height: 1.5; }
+.upv-choice > .btn { align-self: flex-start; margin-top: auto; }
+.upv-choice-tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--utm-accent-soft);
+  color: var(--utm-accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+.upv-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 767px) { .upv-choices, .upv-two { grid-template-columns: minmax(0, 1fr); } }
+
+/* ------------------------------------------------------------- chart */
+.upv-chart-card { margin: 0 0 16px; }
+.upv-chart { height: 150px; padding: 12px 16px 14px; }
+.upv-bars { display: flex; align-items: flex-end; gap: 2px; height: 100%; }
+.upv-bars > span {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 2px;
+  overflow: hidden;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--utm-accent) 55%, transparent);
+  transition: height .4s var(--utm-ease, ease);
+}
+.upv-bars > span > i { display: block; width: 100%; background: var(--us-crit, #f0383b); }
+.upv-bars > span:hover { filter: brightness(1.15); }
+.upv-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--utm-text-3); font-size: 12px; }
+.upv-legend i { display: inline-block; width: 10px; height: 10px; margin-left: 8px; border-radius: 2px; }
+.upv-legend .is-total { background: color-mix(in srgb, var(--utm-accent) 55%, transparent); }
+.upv-legend .is-blocked { background: var(--us-crit, #f0383b); }
+
+/* --------------------------------------------------------- top lists */
+.upv-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.upv-pair > .utm-card { margin: 0; }
+@media (max-width: 767px) { .upv-pair { grid-template-columns: minmax(0, 1fr); } }
+.upv-list { margin: 0; padding: 0; list-style: none; }
+.upv-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--utm-line-2);
+}
+.upv-list li:last-child { border-bottom: 0; }
+.upv-dom { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; padding-bottom: 4px; }
+.upv-dom b { overflow: hidden; color: var(--utm-heading); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.upv-dom small { color: var(--utm-text-3); font-size: 11.5px; }
+.upv-meter {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--utm-accent);
+  opacity: .5;
+}
+.upv-meter.is-blocked { background: var(--us-crit, #f0383b); }
+.upv-count { color: var(--utm-text-2); font-variant-numeric: tabular-nums; }
+.upv-act { flex: none; }
+.upv-list .utm-dev { flex: 1; min-width: 0; }
+
+/* ----------------------------------------------------------- the log */
+.upv-search { width: 220px; max-width: 40%; height: 28px; margin-left: 8px; }
+.upv-log-wrap { max-height: 560px; overflow: auto; }
+.upv-log-wrap thead th { position: sticky; top: 0; z-index: 1; background: var(--utm-surface); }
+.upv-domain { max-width: 340px; overflow: hidden; color: var(--utm-heading); text-overflow: ellipsis; white-space: nowrap; }
+.ush-table tr.is-blocked td:first-child { box-shadow: inset 3px 0 0 var(--us-crit, #f0383b); }
+
+/* ---------------------------------------------------------- settings */
+.upv-provider { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.upv-provider > span:first-child { color: var(--utm-text-2); font-weight: 500; }
+.upv-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.upv-level {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--utm-line);
+  border-radius: var(--utm-radius-sm);
+  background: var(--utm-surface-2);
+  color: var(--utm-text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.upv-level b { color: var(--utm-heading); }
+.upv-level small { font-size: 11.5px; line-height: 1.4; }
+.upv-level.is-active { border-color: var(--utm-accent); box-shadow: 0 0 0 1px var(--utm-accent) inset; background: var(--utm-accent-soft); }
+.upv-level:focus-visible { outline: 2px solid var(--utm-accent); outline-offset: 2px; }
+@media (max-width: 520px) { .upv-levels { grid-template-columns: minmax(0, 1fr); } }
+.upv-note { margin: 10px 0 0; color: var(--utm-text-3); font-size: 12px; line-height: 1.5; }
+.upv-chip.is-allow .fa-check { color: var(--utm-ok); }
+.upv-chip.is-block .fa-ban { color: var(--us-crit, #f0383b); }
+.upv-ifs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 6px; }
+.upv-ifs > span { color: var(--utm-text-2); font-weight: 500; }
+.upv-if { display: inline-flex; align-items: center; gap: 5px; margin: 0; font-weight: 500; }
+.upv .ush-add .btn + .btn { margin-left: -2px; }
+
+/* card bodies padded like Shield's, except the query log table */
+.upv .ush-card > [data-upv]:not([data-upv="log"]) { padding: 12px 16px 16px; }
+.upv [hidden] { display: none !important; }
+.upv-list .utm-dev { display: flex; flex-direction: column; }
+.upv-list .utm-dev small { color: var(--utm-text-3); font-size: 11.5px; }
+.upv-log-wrap td small {
+  display: block;
+  max-width: 200px;
+  overflow: hidden;
+  color: var(--utm-text-3);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upv-chart-card .utm-card-head b::first-letter { text-transform: uppercase; }
+.upv-dom small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upv-domain small { display: block; color: var(--utm-text-3); font-size: 11px; }
+.upv-log-wrap td small { max-width: 170px; }
+.upv-domain { max-width: 260px; }

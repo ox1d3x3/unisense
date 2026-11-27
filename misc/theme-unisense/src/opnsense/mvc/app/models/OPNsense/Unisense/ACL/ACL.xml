@@ -20,4 +20,11 @@
             <pattern>api/unisense/shield/*</pattern>
         </patterns>
     </page-unisense-shield>
+    <page-unisense-privacy>
+        <name>Lobby: Privacy</name>
+        <patterns>
+            <pattern>ui/unisense/privacy*</pattern>
+            <pattern>api/unisense/privacy/*</pattern>
+        </patterns>
+    </page-unisense-privacy>
 </acl>
