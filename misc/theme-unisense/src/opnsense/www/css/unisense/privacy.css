@@ -153,3 +153,13 @@
 .upv-log-wrap th:last-child { width: 48px; }
 .upv-log-wrap td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upv-log-wrap td small, .upv-domain { max-width: 100%; }
+
+/* ---------------------------------------------------------------- block page */
+.upv-bp { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--utm-line-2); }
+.upv-bp h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; color: var(--utm-heading); }
+.upv-bp-form { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.upv-bp-form small { display: block; margin-top: 4px; color: var(--utm-text-3); font-size: 12px; }
+.upv-bp-form .ush-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.upv-bp-status .fa { font-size: 8px; vertical-align: middle; margin-right: 4px; }
+.upv-bp-status .is-ok { color: var(--utm-ok-text, #2e9e5b); }
+.upv-bp-status .is-off { color: var(--utm-text-3); }

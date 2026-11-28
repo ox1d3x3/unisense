@@ -24,31 +24,7 @@
  # POSSIBILITY OF SUCH DAMAGE.
  #}
 
-<link rel="stylesheet" type="text/css" href="{{ cache_safe('/ui/css/unisense/trafficmap.css') }}">
-<link rel="stylesheet" type="text/css" href="{{ cache_safe('/ui/css/unisense/shield.css') }}">
-<link rel="stylesheet" type="text/css" href="{{ cache_safe('/ui/css/unisense/privacy.css') }}">
-
-<div id="upv" class="utm ush upv"
-     data-t-off="{{ lang._('Ad blocking off') }}"
-     data-t-on-unbound="{{ lang._('Blocking ads and trackers') }}"
-     data-t-on-adguard="{{ lang._('AdGuard Home') }}"
-     data-t-queries="{{ lang._('DNS queries') }}"
-     data-t-blocked="{{ lang._('Blocked') }}"
-     data-t-listed="{{ lang._('Domains on block lists') }}"
-     data-t-speed="{{ lang._('Average answer') }}"
-     data-t-top-client="{{ lang._('Busiest device') }}"
-     data-t-last24="{{ lang._('last 24 hours') }}"
-     data-t-top-blocked="{{ lang._('Top blocked') }}"
-     data-t-top-domains="{{ lang._('Top domains') }}"
-     data-t-log="{{ lang._('Query log') }}"
-     data-t-setup="{{ lang._('Block ads and trackers for every device') }}"
-     data-t-setup-help="{{ lang._('Choose where the blocking happens. Nothing changes in your DNS until you switch it on.') }}"
-     data-t-blocking="{{ lang._('Blocking') }}"
-     data-t-rules="{{ lang._('Your rules') }}"
-     data-t-bypass="{{ lang._('Stop devices going around it') }}"
-     data-t-gaming="{{ lang._('Logins, stores, matchmaking, anti-cheat and voice for PlayStation, Xbox, Steam, Battle.net, Ubisoft, Activision, EA, Epic, Riot and Discord are never blocked.') }}"
-     data-t-error="{{ lang._('Could not read Privacy. Check your privileges or try again.') }}">
-    <div class="utm-loading"><i class="fa fa-spinner fa-pulse fa-fw"></i></div>
-</div>
-
-<script src="{{ cache_safe('/ui/js/unisense/privacy.js') }}"></script>
+<script>
+    /* Privacy now lives in Shield */
+    window.location.replace('/ui/unisense/shield#privacy');
+</script>

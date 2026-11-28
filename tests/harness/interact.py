@@ -19,8 +19,8 @@ HERE = Path(__file__).resolve().parent
 failures = []
 
 
-def check(cond, msg):
-    print(('  ok   ' if cond else '  FAIL ') + msg)
+def check(cond, msg, detail=None):
+    print(('  ok   ' if cond else '  FAIL ') + msg + ('' if cond or detail is None else '  -> ' + repr(detail)[:300]))
     if not cond:
         failures.append(msg)
 
@@ -440,7 +440,7 @@ def main():
         check(pg.locator('.ush-stat').count() == 4, 'four counters')
         check(pg.is_visible('[data-ush="alerts-card"]') and pg.locator('[data-ush="alerts"] tbody tr').count() == 2, 'device alerts listed')
         badge = pg.locator('#mainmenu a[href="/ui/unisense/shield"] .us-alert-badge')
-        check(badge.count() == 1 and badge.first.inner_text() == '2', 'unseen alerts counted on the Shield menu entry')
+        check(badge.count() == 1, 'unseen alerts counted on the Shield menu entry')
         check(pg.locator('[data-ush="recent"] tbody tr').count() > 10, 'recent blocks listed')
         pg.click('[data-ush-filter="out"]'); pg.wait_for_timeout(200)
         rows = pg.locator('[data-ush="recent"] tbody tr').count()
@@ -460,8 +460,17 @@ def main():
         pg.click('[data-ush="check-form"] button'); pg.wait_for_timeout(800)
         res = pg.inner_text('[data-ush="check-result"]')
         check('Blocked by Shield' in res and 'Feodo' in res and '9 malicious' in res, 'address check: lists and VirusTotal')
+        check(badge.count() == 1 and badge.first.inner_text() == '4', 'menu badge: unseen alerts + waiting requests')
         pg.click('[data-ush-action="ack"]'); pg.wait_for_timeout(800)
-        check(any(u.endswith('/api/unisense/shield/ack') for u, _, _ in posts) and badge.count() == 0, 'mark as seen clears the menu badge')
+        check(any(u.endswith('/api/unisense/shield/ack') for u, _, _ in posts), 'mark as seen posted')
+        check(pg.locator('details.ush-earlier').count() == 1 and 'Earlier alerts (2)' in pg.inner_text('details.ush-earlier summary')
+              and not pg.is_visible('[data-ush-action="ack"]') and 'Nothing new' in pg.inner_text('[data-ush="alerts"]'),
+              'mark as seen: alerts fold into "Earlier alerts", the button goes',
+              [pg.locator('details.ush-earlier').count(), pg.inner_text('[data-ush="alerts"]')[:200], pg.is_visible('[data-ush-action="ack"]')])
+        pg.click('details.ush-earlier summary'); pg.wait_for_timeout(200)
+        pg.click('[data-ush-action="dismiss"][data-remote="1.10.16.9"]'); pg.wait_for_timeout(600)
+        check(any(u.endswith('/api/unisense/shield/dismiss') for u, _, _ in posts) and 'Earlier alerts (1)' in pg.inner_text('details.ush-earlier summary'),
+              'dismiss hides one alert at once')
         check('&gt;' not in pg.inner_text('[data-ush="checkup"]') and 'Services > Unbound DNS' in pg.inner_text('[data-ush="checkup"]'),
               'text the API escaped is shown once-escaped (no "&gt;")')
         check('1 country' in pg.inner_text('[data-ush="stats"]') or ' countries' in pg.inner_text('[data-ush="stats"]'), 'country count worded')
@@ -531,7 +540,10 @@ def main():
         posts = []
         pg.on('request', lambda r: r.method == 'POST' and posts.append((r.url, r.headers.get('x-csrftoken'), r.post_data)))
         pg.on('dialog', lambda d: d.accept())
-        pg.goto(f'{base}/privacy.html'); pg.wait_for_timeout(3000)
+        pg.goto(f'{base}/shield.html#privacy'); pg.wait_for_timeout(3000)
+        check(pg.get_attribute('[data-ush-tab="privacy"]', 'aria-selected') == 'true' and pg.is_hidden('[data-ush-pane="overview"]'),
+              'Privacy is a tab of Shield (#privacy opens it)')
+        check(pg.locator('#mainmenu a[href="/ui/unisense/privacy"]').count() == 0, 'no separate Privacy menu entry')
         check('Blocking ads' in pg.inner_text('[data-upv="state"]') and pg.locator('[data-upv="stats"] .utm-stat').count() == 4,
               'state and four counters')
         check(pg.locator('.upv-bars > span').count() == 144, '24 h chart (10-minute bars)')
@@ -561,6 +573,27 @@ def main():
         check(pg.evaluate("document.querySelector('.upv-log-wrap').scrollWidth <= document.querySelector('.upv-log-wrap').clientWidth"),
               'log fits its card')
         check(pg.locator('[data-upv="agh-link"]').is_hidden(), 'no AdGuard Home link when built in')
+        check(pg.is_visible('.upv-bp') and pg.locator('[data-upv-ca] option').count() == 2 and 'running' in pg.inner_text('.upv-bp'),
+              'block page card: address, CA choice, running')
+        pg.select_option('[data-upv-ca]', '6a1b2c3d4e5f6'); pg.wait_for_timeout(1500)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/privacy/set')]
+        check(sent and sent[-1] == {'privacy': {'bp_ca': '6a1b2c3d4e5f6'}} and 'HTTP and HTTPS' in pg.inner_text('.upv-bp'), 'CA chosen: HTTPS too')
+        pg.click('[data-upv-provider="adguard"]'); pg.wait_for_timeout(500)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/privacy/set')]
+        check(sent[-1] == {'privacy': {'bp_ca': '6a1b2c3d4e5f6'}} and pg.is_visible('[data-upv="settings"] [data-upv-form="agh"]'),
+              'AdGuard Home with no address: asks for it, does not switch')
+        pg.click('[data-ush-tab="requests"]'); pg.wait_for_timeout(1200)
+        check(pg.locator('[data-usr-req]').count() == 3 and pg.inner_text('[data-ush-req-badge]') == '2', 'Requests tab: list and count')
+        check('<b>urgent</b>' in pg.inner_text('#usr') and pg.locator('#usr b:text("urgent")').count() == 0, 'request text shown as text, never as markup')
+        pg.click('[data-usr-menu="a1b2c3d4e5f6"]'); pg.wait_for_timeout(200)
+        check(pg.locator('[data-usr-approve="a1b2c3d4e5f6"]').count() == 4, 'Approve offers 1 hour, 24 hours, 1 month, always')
+        pg.click('[data-usr-approve="a1b2c3d4e5f6"][data-dur="24h"]'); pg.wait_for_timeout(1200)
+        sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/shield/request')]
+        check(sent and sent[-1] == {'id': 'a1b2c3d4e5f6', 'action': 'approve', 'duration': '24h'} and
+              'left' in pg.inner_text('[data-usr-req="a1b2c3d4e5f6"]'), 'approve for 24 hours')
+        pg.click('[data-usr-decline="b1b2c3d4e5f6"]'); pg.wait_for_timeout(1200)
+        check('declined' in pg.inner_text('[data-usr-req="b1b2c3d4e5f6"]') and pg.is_hidden('[data-ush-req-badge]'), 'decline; nothing waiting')
+        check(pg.evaluate("location.hash") == '#requests', 'the tab is kept in the address')
         sw = pg.evaluate("document.documentElement.scrollWidth")
         check(sw <= 1440, f'no horizontal overflow ({sw})')
         check(not errs, 'no console errors: ' + '; '.join(errs))
@@ -570,7 +603,7 @@ def main():
         pg = ctx.new_page(); errs = []; watch(pg, errs)
         posts = []
         pg.on('request', lambda r: r.method == 'POST' and posts.append((r.url, r.headers.get('x-csrftoken'), r.post_data)))
-        pg.goto(f'{base}/privacy.html'); pg.wait_for_timeout(2500)
+        pg.goto(f'{base}/shield.html#privacy'); pg.wait_for_timeout(2500)
         check(pg.locator('.upv-choice').count() == 2 and pg.is_hidden('[data-upv="dash"]'), 'off: the two ways to switch it on')
         pg.fill('[data-upv-form="agh"] [name="agh_url"]', 'http://192.168.1.5:3000')
         pg.fill('[data-upv-form="agh"] [name="agh_user"]', 'admin')

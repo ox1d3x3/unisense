@@ -850,7 +850,9 @@ def cmd_alerts():
     ack = st.get('ack', 0)
     alerts = [dict(a, new=a['last'] > ack) for a in visible_alerts(st)]
     # "enabled": alerts only come from the threat lists; the menu badge stops polling without them
-    return out({'ok': True, 'enabled': cfg['enabled'], 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts})
+    bp = load_json(os.path.join(os.path.dirname(inbox_dir()), 'conf.json'), {})
+    return out({'ok': True, 'enabled': cfg['enabled'], 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts,
+                'requests': pending_count(), 'blockpage': bool(bp.get('enabled'))})
 
 
 def cmd_ack():

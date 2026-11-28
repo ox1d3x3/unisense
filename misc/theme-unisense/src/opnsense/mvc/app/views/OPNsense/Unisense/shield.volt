@@ -26,7 +26,15 @@
 
 <link rel="stylesheet" type="text/css" href="{{ cache_safe('/ui/css/unisense/trafficmap.css') }}">
 <link rel="stylesheet" type="text/css" href="{{ cache_safe('/ui/css/unisense/shield.css') }}">
+<link rel="stylesheet" type="text/css" href="{{ cache_safe('/ui/css/unisense/privacy.css') }}">
 
+<nav class="ush-tabs" role="tablist" aria-label="{{ lang._('Shield') }}">
+    <button type="button" role="tab" data-ush-tab="overview" aria-selected="true"><i class="fa fa-shield-halved"></i> {{ lang._('Overview') }}</button>
+    <button type="button" role="tab" data-ush-tab="privacy" aria-selected="false"><i class="fa fa-user-shield"></i> {{ lang._('Privacy') }}</button>
+    <button type="button" role="tab" data-ush-tab="requests" aria-selected="false"><i class="fa fa-inbox"></i> {{ lang._('Requests') }} <span class="ush-tab-badge" data-ush-req-badge hidden></span></button>
+</nav>
+
+<section data-ush-pane="overview" role="tabpanel">
 <div id="ush" class="utm ush"
      data-t-on="{{ lang._('Protected') }}"
      data-t-off="{{ lang._('Threat lists off') }}"
@@ -69,5 +77,44 @@
      data-t-error="{{ lang._('Could not read Shield. Check your privileges or try again.') }}">
     <div class="utm-loading"><i class="fa fa-spinner fa-pulse fa-fw"></i></div>
 </div>
+</section>
+
+<section data-ush-pane="privacy" role="tabpanel" hidden>
+<div id="upv" class="utm ush upv"
+     data-t-off="{{ lang._('Ad blocking off') }}"
+     data-t-on-unbound="{{ lang._('Blocking ads and trackers') }}"
+     data-t-on-adguard="{{ lang._('AdGuard Home') }}"
+     data-t-queries="{{ lang._('DNS queries') }}"
+     data-t-blocked="{{ lang._('Blocked') }}"
+     data-t-listed="{{ lang._('Domains on block lists') }}"
+     data-t-speed="{{ lang._('Average answer') }}"
+     data-t-top-client="{{ lang._('Busiest device') }}"
+     data-t-last24="{{ lang._('last 24 hours') }}"
+     data-t-top-blocked="{{ lang._('Top blocked') }}"
+     data-t-top-domains="{{ lang._('Top domains') }}"
+     data-t-log="{{ lang._('Query log') }}"
+     data-t-setup="{{ lang._('Block ads and trackers for every device') }}"
+     data-t-setup-help="{{ lang._('Choose where the blocking happens. Nothing changes in your DNS until you switch it on.') }}"
+     data-t-blocking="{{ lang._('Blocking') }}"
+     data-t-rules="{{ lang._('Your rules') }}"
+     data-t-bypass="{{ lang._('Stop devices going around it') }}"
+     data-t-gaming="{{ lang._('Logins, stores, matchmaking, anti-cheat and voice for PlayStation, Xbox, Steam, Battle.net, Ubisoft, Activision, EA, Epic, Riot and Discord are never blocked.') }}"
+     data-t-error="{{ lang._('Could not read Privacy. Check your privileges or try again.') }}">
+    <div class="utm-loading"><i class="fa fa-spinner fa-pulse fa-fw"></i></div>
+</div>
+</section>
+
+<section data-ush-pane="requests" role="tabpanel" hidden>
+<div id="usr" class="utm ush usr"
+     data-t-title="{{ lang._('Unblock requests') }}"
+     data-t-help="{{ lang._('People on your network asked for these from the block page. Approve for a while or for good, or decline.') }}"
+     data-t-none="{{ lang._('No requests yet. People can ask from the block page, or at unblock.your-domain.') }}"
+     data-t-approve="{{ lang._('Approve') }}"
+     data-t-decline="{{ lang._('Decline') }}">
+    <div class="utm-loading"><i class="fa fa-spinner fa-pulse fa-fw"></i></div>
+</div>
+</section>
 
 <script src="{{ cache_safe('/ui/js/unisense/shield.js') }}"></script>
+<script src="{{ cache_safe('/ui/js/unisense/privacy.js') }}"></script>
+<script src="{{ cache_safe('/ui/js/unisense/requests.js') }}"></script>

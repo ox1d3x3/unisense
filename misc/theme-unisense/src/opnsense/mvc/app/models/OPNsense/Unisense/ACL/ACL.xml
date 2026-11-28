@@ -18,6 +18,8 @@
         <patterns>
             <pattern>ui/unisense/shield*</pattern>
             <pattern>api/unisense/shield/*</pattern>
+            <pattern>ui/unisense/privacy*</pattern>
+            <pattern>api/unisense/privacy/*</pattern>
         </patterns>
     </page-unisense-shield>
     <page-unisense-privacy>

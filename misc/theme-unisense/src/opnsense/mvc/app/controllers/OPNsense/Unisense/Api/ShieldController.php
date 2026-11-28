@@ -301,6 +301,108 @@ class ShieldController extends ApiControllerBase
     }
 
     /**
+     * POST {device, remote}: hide an alert until that device tries again
+     */
+    public function dismissAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['ok' => false, 'error' => 'POST required'];
+        }
+        $dev = $this->address($this->input('device'));
+        $rem = $this->address($this->input('remote'));
+        if ($dev === null || $rem === null) {
+            return ['ok' => false, 'error' => 'invalid address'];
+        }
+        $out = json_decode(trim((new Backend())->configdpRun('unisense shield dismiss', [$dev, $rem], false, 20)), true);
+        return is_array($out) ? $out : ['ok' => false, 'error' => 'no response from configd'];
+    }
+
+    /**
+     * unblock requests from the block page
+     */
+    public function requestsAction()
+    {
+        return $this->runJson('unisense shield requests', 20);
+    }
+
+    /**
+     * POST {id, action: approve|decline, duration: 1h|24h|1mo|forever}
+     */
+    public function requestAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['ok' => false, 'error' => 'POST required'];
+        }
+        $id = $this->input('id');
+        $action = $this->input('action');
+        $dur = $action === 'approve' ? $this->input('duration') : '';
+        if (!preg_match('/^[0-9a-f]{12}$/', $id) || !in_array($action, ['approve', 'decline']) ||
+                ($action === 'approve' && !in_array($dur, ['1h', '6h', '24h', '1mo', 'forever']))) {
+            return ['ok' => false, 'error' => 'invalid request'];
+        }
+        $b = new Backend();
+        $req = null;
+        foreach ((json_decode(trim($b->configdRun('unisense shield requests', false, 20)), true)['requests'] ?? []) as $r) {
+            $req = ($r['id'] ?? '') === $id ? $r : $req;
+        }
+        if ($req === null) {
+            return ['ok' => false, 'error' => 'no such request'];
+        }
+        if ($action === 'approve' && $dur === 'forever') {
+            /* for good: the permanent lists, where they can be seen and removed */
+            if ($req['kind'] === 'address') {
+                $addr = (string)$req['site'];
+                $r = $this->change(function ($s) use ($addr) {
+                    $s['allowlist'][] = $addr;
+                    return $s;
+                }, sprintf('UniSense Shield: never block %s (request)', $addr));
+                if (($r['result'] ?? '') !== 'saved') {
+                    return ['ok' => false] + $r;
+                }
+            } else {
+                $mdl = new \OPNsense\Unisense\Privacy();
+                if ((string)$mdl->provider === 'adguard') {
+                    $b->configdpRun('unisense privacy rule', ['allow', (string)$req['site']], false, 30);
+                } else {
+                    $site = (string)$req['site'];
+                    $cnf = \OPNsense\Core\Config::getInstance();
+                    $cnf->lock();
+                    $mdl = new \OPNsense\Unisense\Privacy();
+                    $allow = array_filter(explode(',', (string)$mdl->allow), 'strlen');
+                    if (!in_array($site, $allow)) {
+                        $allow[] = $site;
+                        $mdl->allow = implode(',', $allow);
+                    }
+                    $res = $mdl->syncAndSave(false, sprintf('UniSense Privacy: allow %s (request)', $site));
+                    $cnf->unlock();
+                    if ($res['dnsbl']) {
+                        $b->configdRun('template reload OPNsense/Unbound/*');
+                        $b->configdRun('unbound dnsbl', true);
+                    }
+                }
+            }
+        }
+        $out = json_decode(trim($b->configdpRun('unisense shield request', [$action, $id, $dur], false, 120)), true);
+        return is_array($out) ? $out : ['ok' => false, 'error' => 'no response from configd'];
+    }
+
+    /**
+     * POST {domain}: end an approved website early
+     */
+    public function unallowdomainAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['ok' => false, 'error' => 'POST required'];
+        }
+        $d = strtolower(trim($this->input('domain')));
+        if (!preg_match('/^[a-z0-9_.-]{1,253}$/', $d)) {
+            return ['ok' => false, 'error' => 'invalid domain'];
+        }
+        $out = json_decode(trim((new Backend())->configdpRun('unisense shield unallowdomain', [$d], false, 120)), true);
+        return is_array($out) ? $out : ['ok' => false, 'error' => 'no response from configd'];
+    }
+
+    /**
      * download the lists now (all of them, not only the ones that are due)
      */
     public function updateAction()

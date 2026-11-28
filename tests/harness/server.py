@@ -551,9 +551,12 @@ class Handler(SimpleHTTPRequestHandler):
                   {'device': '192.168.20.15', 'remote': '1.10.16.9', 'port': '8080', 'proto': 'tcp', 'first': now - 86400 * 2,
                    'last': now - 86400, 'count': 3, 'cc': 'CN', 'org': 'CHINANET', 'lists': ['spamhaus']}]
         ack = self.SH['ack']
+        alerts = [a for a in alerts if a['device'] + '|' + a['remote'] not in self.SH.setdefault('dismissed', set())]
         for a in alerts:
             a['new'] = a['last'] > ack
-        return {'ok': True, 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts}
+        pending = len([r for r in self.SH_REQS if r['status'] == 'pending'])
+        return {'ok': True, 'enabled': True, 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts,
+                'requests': pending, 'blockpage': True}
 
     def sh_body(self):
         try:
@@ -561,8 +564,32 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:
             return {}
 
+    SH_REQS = [
+        {'id': 'a1b2c3d4e5f6', 't': int(time.time()) - 600, 'ip': '192.168.1.20', 'name': 'Mahabub', 'site': 'gigabyte.com',
+         'kind': 'domain', 'reason': 'BIOS and driver downloads for my motherboard.', 'status': 'pending', 'until': 0},
+        {'id': 'b1b2c3d4e5f6', 't': int(time.time()) - 3600, 'ip': '192.168.20.15', 'name': 'Rehenoma', 'site': 'shop.example.com',
+         'kind': 'domain', 'reason': 'Uni textbook order <b>urgent</b>', 'status': 'pending', 'until': 0},
+        {'id': 'c1b2c3d4e5f6', 't': int(time.time()) - 86400, 'ip': '192.168.1.42', 'name': 'Guest', 'site': 'casino.example',
+         'kind': 'domain', 'reason': 'please', 'status': 'declined', 'until': 0}]
+
     def shield_api(self, action):
         sh = self.SH
+        if action == 'requests':
+            reqs = self.SH_REQS
+            return self._json({'ok': True, 'pending': len([r for r in reqs if r['status'] == 'pending']), 'requests': reqs})
+        if action == 'request' and self.command == 'POST':
+            b = self.sh_body()
+            for r in self.SH_REQS:
+                if r['id'] == b.get('id'):
+                    r['status'] = 'approved' if b.get('action') == 'approve' else 'declined'
+                    r['dur'] = b.get('duration', '')
+                    r['until'] = int(time.time()) + {'1h': 3600, '24h': 86400, '1mo': 2592000}.get(b.get('duration'), 0)
+                    return self._json({'ok': True})
+            return self._json({'ok': False, 'error': 'no such request'})
+        if action == 'dismiss' and self.command == 'POST':
+            b = self.sh_body()
+            sh.setdefault('dismissed', set()).add(str(b.get('device')) + '|' + str(b.get('remote')))
+            return self._json({'ok': True})
         if action == 'get':
             return self._json({'settings': self.sh_settings(), 'status': self.sh_status()})
         if action == 'status':
@@ -640,7 +667,7 @@ class Handler(SimpleHTTPRequestHandler):
     # ---- Privacy (scripts/unisense/privacy.py output) ----
     PV = {'provider': __import__('os').environ.get('PV_PROVIDER', 'unbound'), 'level': 'balanced', 'extras': ['scams'], 'gaming': True, 'allow': ['gigabyte.com'],
           'block': ['tiktok.com'], 'agh_url': '', 'agh_user': '', 'agh_pass': False, 'redirect': True, 'dot': False,
-          'interfaces': ['lan'], 'protection': True}
+          'interfaces': ['lan'], 'protection': True, 'bp_enabled': True, 'bp_address': '198.18.0.80', 'bp_ca': ''}
 
     def pv_settings(self):
         return {k: v for k, v in self.PV.items() if k != 'protection'}
@@ -652,7 +679,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({'settings': self.pv_settings(), 'info': {
                 'extras': ['scams', 'popups', 'gambling', 'social', 'adult', 'bypass'], 'gaming': ['xboxlive.com'],
                 'interfaces': [{'name': 'lan', 'descr': 'LAN'}, {'name': 'opt1', 'descr': 'IoT'}, {'name': 'opt2', 'descr': 'Guest'}],
-                'redirect': True, 'unbound': True, 'policies': 1}})
+                'redirect': True, 'unbound': True, 'policies': 1, 'domain': 'lan.internal',
+                'cas': [{'refid': '6a1b2c3d4e5f6', 'descr': 'x1wall CA'}]}})
+        if action == 'blockpage':
+            return self._json({'ok': True, 'running': pv['bp_enabled'], 'https': bool(pv['bp_ca']), 'address': pv['bp_address']})
         if action == 'summary':
             if pv['provider'] == 'off':
                 return self._json({'ok': False, 'provider': 'off'})
@@ -696,7 +726,7 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.sh_body()
         if action == 'set':
             for k, v in (body.get('privacy') or {}).items():
-                if k in ('gaming', 'redirect', 'dot'):
+                if k in ('gaming', 'redirect', 'dot', 'bp_enabled'):
                     pv[k] = str(v) in ('1', 'true', 'True')
                 elif k == 'agh_pass':
                     pv[k] = bool(v)

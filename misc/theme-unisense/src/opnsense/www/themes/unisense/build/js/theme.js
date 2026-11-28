@@ -1587,8 +1587,9 @@
                         return;
                     }
                     if (d && d.ok) {
-                        shieldBadge(d.unseen || 0);
-                        if (!d.enabled && !d.unseen) {
+                        /* new alerts and unblock requests waiting */
+                        shieldBadge((d.unseen || 0) + (d.requests || 0));
+                        if (!d.enabled && !d.unseen && !d.requests && !d.blockpage) {
                             return;       /* threat lists off: no alerts can come; look again on the next page */
                         }
                     }

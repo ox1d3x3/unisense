@@ -29,7 +29,8 @@ def main():
                             device_scale_factor=2 if mobile else 1, is_mobile=mobile, has_touch=mobile)
         ctx.add_init_script(f"localStorage.setItem('unisense.mode', '{mode}');" + init)
         pg = ctx.new_page()
-        pg.goto(f'{base}/{page}.html')
+        page, _, frag = page.partition('#')
+        pg.goto(f'{base}/{page}.html' + ('#' + frag if frag else ''))
         pg.wait_for_timeout(wait)
         if action:
             action(pg)
@@ -59,7 +60,8 @@ def main():
         shot(b, 'trafficmap-dark', 'trafficmap', 'dark', wait=6000)
         shot(b, 'trafficmap-light', 'trafficmap', 'light', size=(1440, 1400), wait=6000)
         shot(b, 'shield-dark', 'shield', 'dark', size=(1440, 1200), wait=3500)
-        shot(b, 'privacy-dark', 'privacy', 'dark', size=(1440, 1200), wait=3500)
+        shot(b, 'privacy-dark', 'shield#privacy', 'dark', size=(1440, 1200), wait=3500)
+        shot(b, 'requests-dark', 'shield#requests', 'dark', size=(1440, 700), wait=2500)
 
         def block_panel(pg):
             pg.click('.utm-row[data-cc="NL"]'); pg.wait_for_timeout(400)

@@ -174,7 +174,9 @@
         timer: null,
         check: null,
         checkIp: '',
-        filter: 'all'
+        filter: 'all',
+        dismissed: {},
+        acked: 0
     };
 
     var menu = null;   /* the open "Allow for …" menu */
@@ -200,7 +202,7 @@
             '<div class="ush-col">' +
             '<div class="utm-card ush-card ush-alerts" data-ush="alerts-card" hidden>' +
             '<div class="utm-card-head"><b><i class="fa fa-triangle-exclamation"></i> ' + esc(t('alertsTitle', 'Devices that tried to reach a known-bad address')) + '</b>' +
-            '<button type="button" class="btn btn-default btn-xs ush-head-btn" data-ush-action="ack">' + esc(t('markSeen', 'Mark as seen')) + '</button></div>' +
+            '<button type="button" class="btn btn-default btn-xs ush-head-btn" data-ush-action="ack" data-ush="ack">' + esc(t('markSeen', 'Mark as seen')) + '</button></div>' +
             '<p class="ush-help">' + esc(t('alertsHelp', 'Shield refused these connections. A device that keeps trying may be infected: check it, update it, or scan it.')) + '</p>' +
             '<div data-ush="alerts"></div></div>' +
             card('recent', t('recent', 'Recent blocks'), '', '',
@@ -309,6 +311,12 @@
     function loadAlerts() {
         return fetchJson(API + 'alerts', 60000).then(function (d) {
             if (d && d.ok) {
+                if (S.acked && Date.now() - S.acked < 30000) {    // a cached answer from before "Mark as seen"
+                    d.alerts.forEach(function (x) {
+                        x['new'] = false;
+                    });
+                    d.unseen = 0;
+                }
                 S.alerts = d;
                 renderAlerts();
                 renderStats();
@@ -347,6 +355,8 @@
                 }
             });
             S.names = names;
+            window.UniSense = window.UniSense || {};
+            window.UniSense.deviceNames = names;
             renderRecent();
             renderAlerts();
         });
@@ -587,30 +597,54 @@
             '<i class="fa fa-magnifying-glass"></i></button>';
     }
 
+    function alertKey(x) {
+        return x.device + '|' + x.remote;
+    }
+
     function renderAlerts() {
         var a = S.alerts;
         var cardEl = q('alerts-card');
-        if (!a || !a.alerts.length) {
+        var list = a ? a.alerts.filter(function (x) {
+            return !S.dismissed[alertKey(x)];
+        }) : [];
+        if (!list.length) {
             cardEl.hidden = true;
             return;
         }
         cardEl.hidden = false;
-        cardEl.classList.toggle('has-new', a.unseen > 0);
+        var fresh = list.filter(function (x) {
+            return x['new'];
+        });
+        var earlier = list.filter(function (x) {
+            return !x['new'];
+        });
+        cardEl.classList.toggle('has-new', fresh.length > 0);
+        q('ack').hidden = !fresh.length;
         var feeds = {};
         ((S.status || {}).feeds || []).forEach(function (f) {
             feeds[f.id] = f.name;
         });
-        setHtml(q('alerts'), '<div class="utm-table-wrap"><table class="utm-table ush-table"><thead><tr><th>Device</th><th>Tried to reach</th>' +
-            '<th>List</th><th>Seen</th><th></th></tr></thead><tbody>' +
-            a.alerts.map(function (x) {
-                return '<tr class="' + (x['new'] ? 'is-new' : '') + '"><td>' + devHtml(x.device) + '</td>' +
-                    '<td>' + remoteHtml(x.remote, x.cc, x.org) + (x.port ? '<small class="ush-port">' + esc(x.proto.toUpperCase() + ' ' + x.port) + '</small>' : '') + '</td>' +
-                    '<td>' + (x.lists || []).map(function (l) {
-                        return '<span class="ush-tag is-both">' + esc(feeds[l] || l) + '</span>';
-                    }).join(' ') + '</td>' +
-                    '<td class="ush-nowrap">' + esc(ago(x.last)) + '<small>' + esc(plural(x.count, 'try', 'tries')) + '</small></td>' +
-                    '<td class="ush-c-act">' + allowBtn(x.remote) + checkBtn(x.remote) + '</td></tr>';
-            }).join('') + '</tbody></table></div>');
+        function table(rows) {
+            return '<div class="utm-table-wrap"><table class="utm-table ush-table"><thead><tr><th>Device</th><th>Tried to reach</th>' +
+                '<th>List</th><th>Seen</th><th></th></tr></thead><tbody>' +
+                rows.map(function (x) {
+                    return '<tr class="' + (x['new'] ? 'is-new' : '') + '"><td>' + devHtml(x.device) + '</td>' +
+                        '<td>' + remoteHtml(x.remote, x.cc, x.org) + (x.port ? '<small class="ush-port">' + esc(x.proto.toUpperCase() + ' ' + x.port) + '</small>' : '') + '</td>' +
+                        '<td>' + (x.lists || []).map(function (l) {
+                            return '<span class="ush-tag is-both">' + esc(feeds[l] || l) + '</span>';
+                        }).join(' ') + '</td>' +
+                        '<td class="ush-nowrap">' + esc(ago(x.last)) + '<small>' + esc(plural(x.count, 'try', 'tries')) + '</small></td>' +
+                        '<td class="ush-c-act">' + allowBtn(x.remote) + checkBtn(x.remote) +
+                        '<button type="button" class="btn btn-default btn-xs ush-icon-btn" data-ush-action="dismiss" data-device="' + esc(x.device) +
+                        '" data-remote="' + esc(x.remote) + '" title="' + esc(t('dismiss', 'Dismiss: hide until this device tries again')) +
+                        '" aria-label="Dismiss"><i class="fa fa-xmark"></i></button></td></tr>';
+                }).join('') + '</tbody></table></div>';
+        }
+        var openEarlier = cardEl.querySelector('details.ush-earlier[open]') !== null;
+        setHtml(q('alerts'), (fresh.length ? table(fresh) : '<p class="ush-help ush-allclear"><i class="fa fa-circle-check"></i> ' +
+            esc(t('allSeen', 'Nothing new. Earlier alerts are kept below until you dismiss them.')) + '</p>') +
+            (earlier.length ? '<details class="ush-earlier"' + (openEarlier ? ' open' : '') + '><summary>' +
+                esc(t('earlier', 'Earlier alerts')) + ' (' + earlier.length + ')</summary>' + table(earlier) + '</details>' : ''));
     }
 
     function renderRecent() {
@@ -960,9 +994,21 @@
                     load();
                     loadHits();
                 });
+            } else if (act === 'dismiss') {
+                var key = a.getAttribute('data-device') + '|' + a.getAttribute('data-remote');
+                S.dismissed[key] = true;      // the alert list is cached for a few seconds: hide it here at once
+                renderAlerts();
+                post(API + 'dismiss', { device: a.getAttribute('data-device'), remote: a.getAttribute('data-remote') });
             } else if (act === 'ack') {
+                if (S.alerts) {                // same: show it seen at once, the cached list catches up
+                    S.alerts.alerts.forEach(function (x) {
+                        x['new'] = false;
+                    });
+                    S.alerts.unseen = 0;
+                    S.acked = Date.now();
+                    renderAlerts();
+                }
                 post(API + 'ack', {}).then(function () {
-                    loadAlerts();
                     if (window.UniSense && window.UniSense.shieldBadge) {
                         window.UniSense.shieldBadge(0);
                     }

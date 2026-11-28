@@ -166,6 +166,8 @@
                         inp.value = '';
                     }
                 });
+            } else if (f === 'bp') {
+                save({ bp_address: e.target.bp_address.value.trim() }, 'bp-msg').then(loadBlockPage);
             } else if (f === 'agh') {
                 saveAgh(e.target);
             }
@@ -192,9 +194,26 @@
             return Promise.resolve();
         }
         return Promise.all([fetchJson(API + 'summary', 60000), fetchJson(API + 'log/300', 60000)]).then(function (r) {
-            S.sum = r[0];
+            // a refresh that failed keeps the last good numbers on screen (the error shows in the banner)
+            var good = S.sum && S.sum.ok && S.sum.provider === S.settings.provider;
+            S.sumError = r[0] && r[0].ok ? '' : ((r[0] && r[0].error) || 'Could not read the statistics.');
+            S.sum = r[0] && r[0].ok ? r[0] : (good ? S.sum : r[0]);
             S.log = r[1] && r[1].ok ? r[1].rows : (S.log || []);
             renderDash();
+        });
+    }
+
+    function loadBlockPage() {
+        if (!S.settings || !S.settings.bp_enabled) {
+            return Promise.resolve();
+        }
+        return new Promise(function (r) {
+            setTimeout(r, 800);       // give it a moment to (re)start
+        }).then(function () {
+            return fetchJson(API + 'blockpage', 15000);
+        }).then(function (d) {
+            S.bp = d || {};
+            renderBypass();
         });
     }
 
@@ -221,7 +240,7 @@
     function poll() {
         clearTimeout(S.timer);
         S.timer = setTimeout(function () {
-            if (document.hidden || S.busy) {
+            if (document.hidden || S.busy || root.offsetParent === null) {
                 poll();
                 return;
             }
@@ -311,9 +330,9 @@
             return;
         }
         var banner = q('banner');
-        if (d && !d.ok) {
+        if (d && (!d.ok || S.sumError)) {
             banner.hidden = false;
-            setHtml(banner, '<i class="fa fa-circle-info"></i> ' + esc(d.error || 'No data yet.'));
+            setHtml(banner, '<i class="fa fa-circle-info"></i> ' + esc(S.sumError || d.error || 'No data yet.'));
         } else {
             banner.hidden = true;
         }
@@ -402,6 +421,9 @@
             [['unbound', 'Built in'], ['adguard', 'AdGuard Home'], ['off', 'Off']].map(function (p) {
                 return '<button type="button" data-upv-provider="' + p[0] + '"' + (s.provider === p[0] ? ' class="is-active"' : '') + '>' + p[1] + '</button>';
             }).join('') + '</span></div>';
+        if (S.aghForm && s.provider !== 'adguard') {
+            html += '<p class="upv-note">Enter your AdGuard Home server. Blocking moves there when you save; until then nothing changes.</p>' + aghFields(s);
+        }
         if (s.provider === 'unbound') {
             html += '<div class="upv-levels">' + LEVELS.map(function (l) {
                 return '<button type="button" class="upv-level' + (s.level === l[0] ? ' is-active' : '') + '" data-upv-level="' + l[0] + '"><b>' + esc(l[1]) + '</b><small>' + esc(l[2]) + '</small></button>';
@@ -461,7 +483,33 @@
             '<li class="ush-feed' + (s.dot ? ' is-on' : '') + '">' + sw('dot', s.dot) +
             '<span class="ush-feed-body"><span class="ush-feed-name">Refuse DNS-over-TLS to other servers</span><small>Port 853 is only allowed to ' +
             (unb ? 'this firewall' : 'your AdGuard Home') + '. Phones (Android Private DNS) then fall back to your DNS.</small></span></li></ul>' +
-            (unb ? '<p class="upv-note">DNS-over-HTTPS hides inside normal web traffic: switch on “DNS-over-HTTPS, VPN and proxy services” under Blocking to stop it.</p>' : '') + '<div class="ush-msg" data-upv="bypass-msg"></div>');
+            (unb ? '<p class="upv-note">DNS-over-HTTPS hides inside normal web traffic: switch on “DNS-over-HTTPS, VPN and proxy services” under Blocking to stop it.</p>' : '') + '<div class="ush-msg" data-upv="bypass-msg"></div>' +
+            (unb ? blockPage() : ''));
+    }
+
+    function blockPage() {
+        var s = S.settings;
+        var info = S.info || {};
+        var host = 'unblock.' + (info.domain || 'home.arpa');
+        var st = S.bp || {};
+        return '<div class="upv-bp"><h4><i class="fa fa-hand"></i> Block page</h4><ul class="ush-feeds">' +
+            '<li class="ush-feed' + (s.bp_enabled ? ' is-on' : '') + '">' + sw('bp_enabled', s.bp_enabled) +
+            '<span class="ush-feed-body"><span class="ush-feed-name">Show a page instead of a broken site</span><small>' +
+            'Blocked websites show “Stopped by UniSense Shield”, the reason and a Request to unblock button. Requests arrive in the Requests tab.' +
+            '</small></span></li></ul>' +
+            (s.bp_enabled ? '<form class="upv-bp-form" data-upv-form="bp">' +
+                '<label class="ush-field"><span>Address</span><input class="form-control" name="bp_address" value="' + esc(s.bp_address) + '" spellcheck="false">' +
+                '<small>Only the firewall answers on it. Change it if it is on one of your networks.</small></label>' +
+                '<label class="ush-field"><span>Certificate authority for HTTPS</span><select class="form-control" data-upv-ca>' +
+                '<option value="">None: HTTP only (HTTPS sites show the browser\'s own error)</option>' +
+                (info.cas || []).map(function (c) {
+                    return '<option value="' + esc(c.refid) + '"' + (c.refid === s.bp_ca ? ' selected' : '') + '>' + esc(c.descr) + '</option>';
+                }).join('') + '</select><small>Devices that trust this CA see the page on HTTPS sites too. Others see a certificate warning.</small></label>' +
+                '<div class="ush-row"><button type="submit" class="btn btn-default btn-sm">Save address</button>' +
+                '<a class="btn btn-default btn-sm" href="http://' + esc(host) + '/" target="_blank" rel="noopener"><i class="fa fa-arrow-up-right-from-square"></i> ' + esc(host) + '</a>' +
+                '<span class="utm-muted upv-bp-status">' + (st.running ? '<i class="fa fa-circle is-ok"></i> running' + (st.https ? ', HTTP and HTTPS' : ', HTTP only') :
+                    (st.ok ? '<i class="fa fa-circle is-off"></i> not running' : '')) + '</span></div></form>' : '') +
+            '<div class="ush-msg" data-upv="bp-msg"></div></div>';
     }
 
     /* ------------------------------------------------------------- actions */
@@ -507,6 +555,7 @@
             if (!ok) {
                 return;
             }
+            S.aghForm = false;
             fetchJson(API + 'test', 20000).then(function (r) {
                 msg('agh-msg', r && r.ok ? 'Connected to AdGuard Home ' + (r.version || '') + '.' : (r && r.error) || 'Could not connect.', r && r.ok ? 'is-ok' : 'is-error');
                 loadData();
@@ -551,8 +600,12 @@
             } else {
                 var b = {};
                 b[set] = el.checked ? '1' : '0';
-                save(b, set === 'gaming' ? 'settings-msg' : 'bypass-msg');
+                save(b, set === 'gaming' ? 'settings-msg' : set === 'bp_enabled' ? 'bp-msg' : 'bypass-msg').then(set === 'bp_enabled' ? loadBlockPage : null);
             }
+            return;
+        }
+        if (el.hasAttribute && el.hasAttribute('data-upv-ca')) {
+            save({ bp_ca: el.value }, 'bp-msg').then(loadBlockPage);
             return;
         }
         var ifn = el.getAttribute && el.getAttribute('data-upv-if');
@@ -572,13 +625,17 @@
         var p = c('[data-upv-provider]');
         if (p) {
             var prov = p.getAttribute('data-upv-provider');
-            if (prov === 'adguard' && S.settings.provider === 'off') {
+            if (prov === 'adguard' && S.settings.provider !== 'adguard' && !S.settings.agh_url) {
+                // nothing to connect to yet: ask for it first instead of switching the blocking off
+                S.aghForm = true;
+                renderSettings();
                 var f = root.querySelector('[data-upv-form="agh"]');
                 if (f) {
                     f.agh_url.focus();
                 }
                 return;
             }
+            S.aghForm = false;
             if (prov === 'off' && !window.confirm('Switch ad blocking off? Your rules and settings are kept.')) {
                 return;
             }
@@ -616,12 +673,30 @@
     }
 
     /* ------------------------------------------------------------- start */
-    build();
-    load().then(loadData).then(poll);
-    loadNames();
-    document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) {
-            loadData();
+    var started = false;
+
+    function start() {
+        if (started) {
+            return;
         }
-    });
+        started = true;
+        build();
+        load().then(function () {
+            loadBlockPage();
+            return loadData();
+        }).then(poll);
+        loadNames();
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden && root.offsetParent !== null) {
+                loadData();
+            }
+        });
+    }
+
+    // inside Shield's Privacy tab: start the first time the tab is opened
+    window.UniSense = window.UniSense || {};
+    window.UniSense.privacyStart = start;
+    if (!root.closest('[data-ush-pane][hidden]')) {
+        start();
+    }
 }());
