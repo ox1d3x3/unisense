@@ -122,7 +122,9 @@
 
     function status(r) {
         if (r.status === 'approved') {
-            return '<span class="usr-st is-ok"><i class="fa fa-check"></i> ' + (r.dur === 'forever' ? 'always' : esc(left(r.until))) + '</span>';
+            return '<span class="usr-act"><span class="usr-st is-ok"><i class="fa fa-check"></i> ' + (r.dur === 'forever' ? 'always' : esc(left(r.until))) + '</span>' +
+                (r.kind === 'domain' && r.until ? '<button type="button" class="btn btn-default btn-xs" data-usr-end="' + esc(r.site) + '" title="End this approval now">End</button>' : '') +
+                '</span>';
         }
         if (r.status === 'declined') {
             return '<span class="usr-st is-off"><i class="fa fa-xmark"></i> declined</span>';
@@ -220,6 +222,15 @@
         if (a) {
             closeMenus();
             act(a.getAttribute('data-usr-approve'), 'approve', a.getAttribute('data-dur'));
+            return;
+        }
+        var en = c('[data-usr-end]');
+        if (en) {
+            msg('Ending…');
+            post(API + 'unallowdomain', { domain: en.getAttribute('data-usr-end') }).then(function (r) {
+                msg(r && r.ok ? 'Ended. The site is blocked again.' : (r && r.error) || 'Could not end it.', r && r.ok ? 'is-ok' : 'is-error');
+                load();
+            });
             return;
         }
         var d = c('[data-usr-decline]');

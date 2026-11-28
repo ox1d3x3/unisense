@@ -398,11 +398,13 @@ t "block page on: applied" 'printf "%s" "$out" | grep -q "^saved / .*vip"' show
 out="$(pv bp)"
 t "address on the loopback, rules to it on 80 and 443, unblock.<domain>, Unbound answers with it" 'printf "%s" "$out" | grep -q "vip=lo0:198.18.0.80/32" && printf "%s" "$out" | grep -q "bp-http=pass:198.18.0.80:80" && printf "%s" "$out" | grep -q "bp-https=pass:198.18.0.80:443" && printf "%s" "$out" | grep -qE "host=unblock\.[a-z.]+>198.18.0.80" && printf "%s" "$out" | grep -q "address=198.18.0.80"' show
 t "known-bad sites sent to the page on 26.1+, not offered on 25.7" 'printf "%s" "$out" | grep -qE "thr=(n/a|bp-thr-lan-80\+bp-thr-lan-443)( |$)"' show
-t "its settings file and the CA for www" 'grep -q "\"enabled\":true" "$S/bp/conf.json" && grep -q "\"ca\":true" "$S/bp/conf.json" && cmp -s "$S/bp/ca.crt" "$S/ca.crt" && [ "$(stat -c %a "$S/bp/ca.key")" = 600 ]' show
+t "its settings file and the CA for www" 'grep -q "\"enabled\":true" "$S/bp/conf.json" && grep -q "\"ca\":true" "$S/bp/conf.json" && cmp -s "$S/bp/ca.crt" "$S/ca.crt" && [ "$(stat -c %a "$S/bp/ca.key")" = 640 ] && [ "$(stat -c %U "$S/bp")" = "$(id -un)" ]' show
 t "second sync changes nothing" '[ "$("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")" = unchanged ]'
 pv set bp_address 198.18.0.81 >/dev/null
 "$PHP" "$SETUPPRIV" sync >/dev/null 2>>"$S/priv.err" || true
 out="$(pv bp)"
+t "address change: the old one is queued for removal from lo0, like the core's Virtual IPs page" 'grep -qx 198.18.0.80 /tmp/delete_vip_*.todo'
+rm -f /tmp/delete_vip_*.todo
 t "address change: still one address, moved" 'printf "%s" "$out" | grep -q "vip=lo0:198.18.0.81/32 vips=1" && printf "%s" "$out" | grep -q "address=198.18.0.81" && printf "%s" "$out" | grep -q ">198.18.0.81"' show
 pv set bp_enabled 0 >/dev/null
 "$PHP" "$SETUPPRIV" sync >/dev/null 2>>"$S/priv.err" || true

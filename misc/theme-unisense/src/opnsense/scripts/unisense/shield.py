@@ -54,6 +54,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import ssl
 import subprocess
 import sys
@@ -828,11 +829,13 @@ def cmd_update(force=False):
                 log('%s: %s' % (fid, m['error']))
         st['updated'] = int(now()) if done else st.get('updated', 0)
         errors, _ = apply(cfg, st)
+        gone = prune_domains(st)          # the cron job ends timed website approvals too
         try:
             collect(st, cfg)
         except OSError:
             pass
         save_json(STATE_FILE, st)
+    privacy_changed(gone, 'remove')
     return out({'ok': not errors, 'updated': done, 'errors': errors})
 
 
@@ -945,20 +948,44 @@ def inbox_dir():
     return os.environ.get('UNISENSE_BLOCKPAGE_INBOX', os.path.join(tm.DB_DIR, 'blockpage', 'inbox'))
 
 
+def read_inbox(remove=True):
+    """the requests the block page (www) left in its inbox, read with care: regular files only,
+    no symlinks, nothing that blocks, at most 8 KB each -> [dict with an int 't']"""
+    d = inbox_dir()
+    try:
+        st = os.lstat(d)
+    except OSError:
+        return []
+    if not stat.S_ISDIR(st.st_mode):
+        return []
+    res = []
+    for name in sorted(os.listdir(d))[:500]:
+        if not name.endswith('.json'):
+            continue
+        path = os.path.join(d, name)
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+            try:
+                if stat.S_ISREG(os.fstat(fd).st_mode):
+                    req = json.loads(os.read(fd, 8192).decode('utf-8', 'replace'))
+                    if isinstance(req, dict) and isinstance(req.get('t'), int):
+                        res.append(req)
+            finally:
+                os.close(fd)
+        except Exception:   # anything odd in a file www wrote: skip it (and drop it below)
+            pass
+        if remove:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+    return res
+
+
 def ingest():
     """requests the block page left in its inbox (it runs as www and never writes Shield's files)"""
-    for path in sorted(glob.glob(os.path.join(inbox_dir(), '*.json'))):
-        try:
-            with open(path) as f:
-                req = json.loads(f.read(8192))
-            if isinstance(req, dict):
-                add_request(req, req.get('t'))
-        except (OSError, ValueError):
-            pass
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+    for req in read_inbox():
+        add_request(req, req['t'])
 
 
 def pending_count():
@@ -1001,9 +1028,9 @@ def cmd_request(action, rid, dur=''):
         save_json(REQUESTS_FILE, reqs)
     if action == 'decline':
         return out({'ok': True})
+    if dur == 'forever':              # the controller put it on the permanent list, where it can be seen and removed
+        return out({'ok': True})
     if r['kind'] == 'address':
-        if dur == 'forever':          # the controller adds it to the permanent list
-            return out({'ok': True})
         return cmd_allow(r['site'], dur)
     with Locked():
         st = load_json(STATE_FILE, {})

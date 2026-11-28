@@ -504,7 +504,8 @@
                 '<option value="">None: HTTP only (HTTPS sites show the browser\'s own error)</option>' +
                 (info.cas || []).map(function (c) {
                     return '<option value="' + esc(c.refid) + '"' + (c.refid === s.bp_ca ? ' selected' : '') + '>' + esc(c.descr) + '</option>';
-                }).join('') + '</select><small>Devices that trust this CA see the page on HTTPS sites too. Others see a certificate warning.</small></label>' +
+                }).join('') + '</select><small>Devices that trust this CA see the page on HTTPS sites too. Others see a certificate warning. ' +
+                '<b>Its private key is kept for the block page</b>: best use a CA made only for this (System → Trust → Authorities → Add, “Create an internal Certificate Authority”), not the one that signs your VPN.</small></label>' +
                 '<div class="ush-row"><button type="submit" class="btn btn-default btn-sm">Save address</button>' +
                 '<a class="btn btn-default btn-sm" href="http://' + esc(host) + '/" target="_blank" rel="noopener"><i class="fa fa-arrow-up-right-from-square"></i> ' + esc(host) + '</a>' +
                 '<span class="utm-muted upv-bp-status">' + (st.running ? '<i class="fa fa-circle is-ok"></i> running' + (st.https ? ', HTTP and HTTPS' : ', HTTP only') :

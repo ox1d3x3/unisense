@@ -608,7 +608,12 @@ def main():
         pg.fill('[data-upv-form="agh"] [name="agh_url"]', 'http://192.168.1.5:3000')
         pg.fill('[data-upv-form="agh"] [name="agh_user"]', 'admin')
         pg.fill('[data-upv-form="agh"] [name="agh_pass"]', 'pw')
-        pg.click('[data-upv-form="agh"] button[type="submit"]'); pg.wait_for_timeout(1500)
+        pg.click('[data-upv-form="agh"] button[type="submit"]')
+        for _ in range(50):          # the save and the connection test, however slow the machine
+            if any(u.endswith('/privacy/set') for u, _, _ in posts) and 'AdGuard' in pg.inner_text('[data-upv="state"]'):
+                break
+            pg.wait_for_timeout(100)
+        pg.wait_for_timeout(300)
         sent = [json.loads(d or '{}') for u, _, d in posts if u.endswith('/privacy/set')]
         check(sent and sent[0]['privacy'] == {'provider': 'adguard', 'agh_url': 'http://192.168.1.5:3000', 'agh_user': 'admin', 'agh_pass': 'pw'},
               f'connect AdGuard Home {sent[:1]}')

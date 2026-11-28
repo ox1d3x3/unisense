@@ -69,7 +69,7 @@ PRIVACY_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'privacy.p
 HOST_RE = re.compile(r'^(?=.{1,253}$)[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)*$')
 BODY_MAX = 4096
 CERTS_MAX = 2000
-RUN_AS = 'www'
+RUN_AS = os.environ.get('UNISENSE_BLOCKPAGE_USER', 'www')
 
 PAGE = '''<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -150,14 +150,10 @@ def submit(fields, client):
     inbox = shield.inbox_dir()
     now = int(time.time())
     known = shield.prune_requests(shield.load_json(shield.REQUESTS_FILE, []))
-    try:
-        for name in os.listdir(inbox):
-            if name.endswith('.json'):
-                with open(os.path.join(inbox, name)) as f:
-                    x = json.loads(f.read(8192))
-                known.append(dict(shield.validate_request(x) or {'ip': '', 'site': ''}, t=x.get('t', now), status='pending'))
-    except (OSError, ValueError):
-        pass
+    for x in shield.read_inbox(remove=False):
+        r2 = shield.validate_request(x)
+        if r2:
+            known.append(dict(r2, t=x['t'], status='pending'))
     res = shield.admit(known, r, now)
     if res in ('rate', 'full'):
         return 429, 'Too many requests from this device. Please try again later.'
@@ -257,10 +253,15 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get('Content-Length') or 0)
         except ValueError:
             n = -1
+        if 'chunked' in (self.headers.get('Transfer-Encoding') or '').lower():
+            n = -1
         if n < 0 or n > BODY_MAX:
             return self.send(413, page('Too long', '<h1>Too long</h1><p>That request is too long.</p>'))
-        raw = self.rfile.read(n).decode('utf-8', 'replace')
-        fields = {k: v[0] for k, v in urllib.parse.parse_qs(raw, max_num_fields=10).items()}
+        try:
+            raw = self.rfile.read(n).decode('utf-8', 'replace')
+            fields = {k: v[0] for k, v in urllib.parse.parse_qs(raw, max_num_fields=10).items()}
+        except (ValueError, OSError):
+            return self.send(400, form_page(msg='That request could not be read. Please try again.'))
         try:
             status, msg = submit(fields, self.client_address[0])
         except OSError:
@@ -286,11 +287,19 @@ class CertStore:
         self.ctx = collections.OrderedDict()
 
     def prepare(self):
+        """as root, before the drop: certs/ for www, the leaf key readable by group www"""
         os.makedirs(self.dir, exist_ok=True)
         if not os.path.exists(self.key):
             subprocess.run([OPENSSL, 'ecparam', '-genkey', '-name', 'prime256v1', '-noout', '-out', self.key],
                            check=True, capture_output=True, timeout=30)
-            os.chmod(self.key, 0o600)
+        os.chmod(self.key, 0o640)
+        if os.getuid() == 0:
+            import pwd
+            pw = pwd.getpwnam(RUN_AS)
+            os.chown(self.key, 0, pw.pw_gid)
+            os.chown(self.dir, pw.pw_uid, pw.pw_gid)
+            os.makedirs(shield.inbox_dir(), exist_ok=True)
+            os.chown(shield.inbox_dir(), pw.pw_uid, pw.pw_gid)
 
     def mint(self, host):
         pem = os.path.join(self.dir, host + '.pem')
@@ -365,7 +374,8 @@ class TLSServer(Server):
 
 
 # ------------------------------------------------------------------ running
-def start_servers(conf, http_port=80, https_port=443):
+def start_servers(conf, http_port=80, https_port=443, before_serving=None):
+    """bind (as root), get ready, run before_serving (the drop to www), then answer"""
     servers = [Server((conf['address'], http_port), Handler)]
     if conf.get('ca'):
         store = CertStore(DIR)
@@ -373,6 +383,9 @@ def start_servers(conf, http_port=80, https_port=443):
         servers.append(TLSServer((conf['address'], https_port), Handler, store))
     for s in servers:
         s.conf = conf
+    if before_serving:
+        before_serving()
+    for s in servers:
         threading.Thread(target=s.serve_forever, daemon=True).start()
     return servers
 
@@ -392,8 +405,7 @@ def serve():
     if not conf.get('enabled') or not conf.get('address'):
         print('the block page is off')
         return 1
-    servers = start_servers(conf)
-    drop_privileges()
+    servers = start_servers(conf, before_serving=drop_privileges)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *a: stop.set())
     signal.signal(signal.SIGINT, lambda *a: stop.set())

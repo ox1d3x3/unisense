@@ -86,7 +86,7 @@ def run(work):
     bp_dir = work / 'blockpage'
     bp_dir.mkdir()
     make_ca(bp_dir)
-    os.environ.update(UNISENSE_DB_DIR=str(work / 'db'), UNISENSE_SHIELD_DIR=str(work / 'db/shield'),
+    os.environ.update(UNISENSE_BLOCKPAGE_USER='nobody', UNISENSE_DB_DIR=str(work / 'db'), UNISENSE_SHIELD_DIR=str(work / 'db/shield'),
                       UNISENSE_BLOCKPAGE_DIR=str(bp_dir), UNISENSE_BLOCKPAGE_INBOX=str(bp_dir / 'inbox'),
                       UNISENSE_CONFIG_XML=str(work / 'config.xml'))
     (work / 'config.xml').write_text('<?xml version="1.0"?><opnsense><OPNsense/></opnsense>')
@@ -130,12 +130,26 @@ def run(work):
     t('a reason over 100 words is refused and not stored', st == 400 and '100 words' in body and
       json.loads(shell(['requests']))['pending'] == 2, body[:200])
     c = http.client.HTTPConnection('127.0.0.1', hp, timeout=5)
-    c.request('POST', '/request', body=b'x' * (1024 * 1024),
-              headers={'Host': 'a.b', 'Content-Type': 'application/x-www-form-urlencoded'})
-    st = c.getresponse().status
+    try:
+        c.request('POST', '/request', body=b'x' * (1024 * 1024),
+                  headers={'Host': 'a.b', 'Content-Type': 'application/x-www-form-urlencoded'})
+        st = c.getresponse().status
+    except (BrokenPipeError, ConnectionResetError):
+        st = 413               # refused before the whole body was sent
     c.close()
     t('a 1 MB post is refused', st == 413, st)
     t('…and the server still answers', get(hp, 'ads.example')[0] == 200)
+    st, body = post(hp, 'ads.example', {'f%d' % i: 'x' for i in range(11)})
+    t('a post with too many fields gets an answer, not a dropped connection', st == 400, st)
+    c = http.client.HTTPConnection('127.0.0.1', hp, timeout=5)
+    c.putrequest('POST', '/request')
+    c.putheader('Host', 'a.b')
+    c.putheader('Transfer-Encoding', 'chunked')
+    c.endheaders()
+    c.send(b'5\r\nhello\r\n0\r\n\r\n')
+    st = c.getresponse().status
+    c.close()
+    t('a chunked post is refused', st == 413, st)
     for i in range(10):
         post(hp, 'ads.example', {'name': 'A', 'site': 'x%d.com' % i, 'reason': 'r'})
     st, body = post(hp, 'ads.example', {'name': 'A', 'site': 'y.com', 'reason': 'r'})
@@ -167,6 +181,42 @@ def run(work):
     for s in servers:
         s.shutdown()
         s.server_close()
+
+    print('as root: binds, then runs as an ordinary user')
+    if os.getuid() == 0:
+        import pwd
+        user = 'nobody'
+        root_dir = work / 'asroot'
+        root_dir.mkdir()
+        make_ca(root_dir)
+        hp3, sp3 = free_port(), free_port()
+        (root_dir / 'conf.json').write_text(json.dumps({'enabled': True, 'address': '127.0.0.1', 'domain': 'lan.internal', 'ca': True}))
+        gid = pwd.getpwnam(user).pw_gid
+        os.chown(root_dir / 'ca.key', 0, gid)
+        os.chmod(root_dir / 'ca.key', 0o640)
+        os.chmod(work, 0o755)
+        env = dict(os.environ, UNISENSE_BLOCKPAGE_DIR=str(root_dir), UNISENSE_BLOCKPAGE_USER=user,
+                   UNISENSE_BLOCKPAGE_INBOX=str(root_dir / 'inbox'), PYTHONDONTWRITEBYTECODE='1')
+        code = ('import sys, threading; sys.path.insert(0, %r); import blockpage as B; '
+                'B.why = lambda h, c: "x"; c = B.load_conf(); '
+                'B.start_servers(c, %d, %d, before_serving=B.drop_privileges); threading.Event().wait()') % (str(SCRIPTS), hp3, sp3)
+        proc = subprocess.Popen([sys.executable, '-c', code], env=env, cwd=str(root_dir))
+        time.sleep(1.5)
+        try:
+            ctx3 = ssl.create_default_context(cafile=str(root_dir / 'ca.crt'))
+            with socket.create_connection(('127.0.0.1', sp3), timeout=5) as raw:
+                with ctx3.wrap_socket(raw, server_hostname='ads.example') as tls:
+                    ok = ('DNS', 'ads.example') in tls.getpeercert().get('subjectAltName', ())
+        except (ssl.SSLError, OSError) as e:
+            ok = str(e)
+        st, body = post(hp3, 'ads.example', {'name': 'A', 'site': 'ads.example', 'reason': 'r'})
+        owner = sorted({pwd.getpwuid(p.stat().st_uid).pw_name for p in (root_dir / 'certs').iterdir()}) if (root_dir / 'certs').exists() else []
+        proc.terminate()
+        proc.wait(5)
+        t('HTTPS still works after the drop (certificates written by the ordinary user)', ok is True and owner == [user], (ok, owner))
+        t('…and requests too', st == 200, (st, body[:200]))
+    else:
+        print('  (skipped: not root)')
 
     print('no CA chosen')
     hp2, sp2 = free_port(), free_port()

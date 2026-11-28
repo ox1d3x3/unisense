@@ -185,6 +185,10 @@ class Privacy extends BaseModel
         /* the address, on lo0 */
         $vip = $this->vipModel();
         $node = isset($ids['bp-vip']) ? $vip->getNodeByReference('vip.' . $ids['bp-vip']) : null;
+        if ($node !== null && (!$on || (string)$node->subnet !== $addr)) {
+            /* like the core's own Virtual IPs page: "interface vip configure" removes the old address */
+            @file_put_contents('/tmp/delete_vip_' . $ids['bp-vip'] . '.todo', (string)$node->subnet . PHP_EOL, FILE_APPEND);
+        }
         if (!$on && $node !== null) {
             $vip->vip->del($ids['bp-vip']);
             unset($ids['bp-vip']);
@@ -366,16 +370,21 @@ class Privacy extends BaseModel
         if (($old === $conf && (string)$oldCrt === $crt) || (!$on && $old === false)) {
             return false;            // unchanged, or off and never set up
         }
-        @mkdir($dir, 0750, true);
+        @mkdir($dir, 0755, true);
         @mkdir($dir . '/inbox', 0750, true);
-        $files = ['conf.json' => [$conf, 0644], 'ca.crt' => [$crt, 0644], 'ca.key' => [$key, 0600]];
+        @mkdir($dir . '/certs', 0755, true);
+        $files = ['conf.json' => [$conf, 0644], 'ca.crt' => [$crt, 0644], 'ca.key' => [$key, 0640]];
         foreach ($files as $name => [$data, $mode]) {
             if ($data === '' && $name !== 'conf.json') {
                 @unlink($dir . '/' . $name);
                 continue;
             }
+            @unlink($dir . '/' . $name . '.new');
             file_put_contents($dir . '/' . $name . '.new', $data);
             chmod($dir . '/' . $name . '.new', $mode);
+            if ($name === 'ca.key' && function_exists('posix_getgrnam') && ($gr = posix_getgrnam('www'))) {
+                @chgrp($dir . '/' . $name . '.new', $gr['gid']);       // the block page signs with it as www
+            }
             rename($dir . '/' . $name . '.new', $dir . '/' . $name);
         }
         /* a new CA: certificates signed by the old one must go */
@@ -384,8 +393,9 @@ class Privacy extends BaseModel
                 @unlink($f);
             }
         }
+        /* the block page (www) may write only these two; everything else stays root's */
         if (function_exists('posix_getpwnam') && ($pw = posix_getpwnam('www')) && posix_geteuid() === 0) {
-            foreach (['', '/inbox', '/certs', '/conf.json', '/ca.crt', '/ca.key'] as $f) {
+            foreach (['/inbox', '/certs'] as $f) {
                 if (file_exists($dir . $f)) {
                     @chown($dir . $f, $pw['uid']);
                     @chgrp($dir . $f, $pw['gid']);

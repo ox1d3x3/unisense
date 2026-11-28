@@ -367,14 +367,20 @@ class ShieldController extends ApiControllerBase
                     $site = (string)$req['site'];
                     $cnf = \OPNsense\Core\Config::getInstance();
                     $cnf->lock();
-                    $mdl = new \OPNsense\Unisense\Privacy();
-                    $allow = array_filter(explode(',', (string)$mdl->allow), 'strlen');
-                    if (!in_array($site, $allow)) {
-                        $allow[] = $site;
-                        $mdl->allow = implode(',', $allow);
+                    try {
+                        $mdl = new \OPNsense\Unisense\Privacy();
+                        $allow = array_filter(explode(',', (string)$mdl->allow), 'strlen');
+                        if (!in_array($site, $allow)) {
+                            $allow[] = $site;
+                            $mdl->allow = implode(',', $allow);
+                        }
+                        $res = $mdl->syncAndSave(false, sprintf('UniSense Privacy: allow %s (request)', $site));
+                    } finally {
+                        $cnf->unlock();
                     }
-                    $res = $mdl->syncAndSave(false, sprintf('UniSense Privacy: allow %s (request)', $site));
-                    $cnf->unlock();
+                    if (count($res['errors'])) {
+                        return ['ok' => false, 'error' => implode('; ', $res['errors'])];
+                    }
                     if ($res['dnsbl']) {
                         $b->configdRun('template reload OPNsense/Unbound/*');
                         $b->configdRun('unbound dnsbl', true);

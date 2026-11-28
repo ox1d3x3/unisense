@@ -448,6 +448,44 @@ def run(work):
     t('declined requests are dropped after 30 days', not any(x['site'] == 'b.com' for x in call('requests')['requests']))
     S.NOW -= 31 * 24 * 3600
 
+    print('requests: review fixes')
+    fid = next(x['id'] for x in call('requests')['requests'] if x['site'] == 's0.com')
+    call('request', 'approve', fid, 'forever')
+    st = json.loads((work / 'db/shield/state.json').read_text())
+    t('"always" for a website is not kept a second time out of sight', 's0.com' not in st.get('domain_allows', {}), st.get('domain_allows'))
+    n0 = len(hooks())
+    sid = next(x['id'] for x in call('requests')['requests'] if x['site'] == 's1.com')
+    call('request', 'approve', sid, '1h')
+    S.NOW += 3601
+    os.environ['UNISENSE_BOOT_ID'] = 'boot-B'
+    call('update')
+    st = json.loads((work / 'db/shield/state.json').read_text())
+    t('the cron job (update) ends timed website approvals, and tells Privacy', 's1.com' not in st.get('domain_allows', {})
+      and len(hooks()) == n0 + 2 and hooks()[-1] == 'php sync apply', hooks()[n0:])
+    inbox = work / 'db/blockpage/inbox'
+    inbox.mkdir(parents=True, exist_ok=True)
+    victim = work / 'victim'
+    victim.mkdir()
+    (victim / 'keep.json').write_text('{}')
+    os.mkfifo(str(inbox / 'fifo.json'))
+    (inbox / 'link.json').symlink_to(victim / 'keep.json')
+    (inbox / 'badt.json').write_text(json.dumps(dict(base, site='bad-t.com', t=[1])))
+    (inbox / 'list.json').write_text('[1, 2]')
+    (inbox / 'good.json').write_text(json.dumps(dict(base, ip='10.10.0.40', site='good.com', t=int(S.NOW))))
+    import threading
+    res = {}
+    th = threading.Thread(target=lambda: res.setdefault('r', call('requests')), daemon=True)
+    th.start()
+    th.join(10)
+    t('odd files in the inbox (a FIFO, a symlink, a bad time, a list) never hang or break it', 'r' in res and
+      any(x['site'] == 'good.com' for x in res['r']['requests']) and not any(x['site'] == 'bad-t.com' for x in res['r']['requests']), res)
+    t('…they are dropped, and a symlink\'s target is left alone', not list(inbox.iterdir()) and (victim / 'keep.json').exists())
+    shutil.rmtree(inbox)
+    (work / 'db/blockpage/inbox').symlink_to(victim)
+    call('requests')
+    t('an inbox that is a symlink is not read at all', (victim / 'keep.json').exists())
+    (work / 'db/blockpage/inbox').unlink()
+
     print('dismiss alerts')
     a = call('alerts')['alerts'][0]
     n = len(call('alerts')['alerts'])
