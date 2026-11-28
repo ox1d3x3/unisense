@@ -184,6 +184,10 @@ def run(work, url):
     P.STATS = str(work / 'stats.py')
     t('AdGuard-only commands refused', call('rule', 'allow', 'x.com')['ok'] is False)
 
+    w = call('why', 'ads.example.net', '10.10.0.20')
+    t('why: the list that blocked it, by name', 'PRO' in w['list'] and w['list'].startswith('hagezi'), w)
+    t('why: nothing for a site that was not blocked', call('why', 'www.google.com', '10.10.0.30')['list'] == '')
+    t('list codes the model does not name still get a name', P.list_names().get('hgz014', '').startswith('hagezi DoH'))
     print('AdGuard Home')
     cfgp.write_text(config('adguard', url, 'admin', 's3cret'))
     s = call('summary')

@@ -894,9 +894,8 @@ def prune_requests(reqs):
     return [r for r in reqs if r['status'] == 'pending' or now() - r.get('done', r['t']) < REQ_KEEP]
 
 
-def add_request(req, now_ts=None):
-    """a request from the block page -> 'ok' | 'rate' | 'full' | 'invalid'"""
-    t = int(now_ts if now_ts is not None else now())
+def validate_request(req):
+    """a request as typed on the block page -> the cleaned request, or None"""
     name = clean(req.get('name'), REQ_NAME_MAX)
     site = clean(req.get('site'), 253).lower().rstrip('.')
     reason = clean(req.get('reason'), REQ_CHARS_MAX)
@@ -904,29 +903,69 @@ def add_request(req, now_ts=None):
     kind = site_kind(site)
     if (not name or len(name) > REQ_NAME_MAX or not reason or len(reason) > REQ_CHARS_MAX or
             len(reason.split()) > REQ_WORDS_MAX or not kind or not ip):
+        return None
+    return {'ip': ip, 'name': name, 'site': site, 'kind': kind, 'reason': reason, 'why': clean(req.get('why'), 120)}
+
+
+def admit(reqs, r, t):
+    """may this request join the list? -> 'ok' | 'again' (same pending site) | 'rate' | 'full'"""
+    mine = [x for x in reqs if x['ip'] == r['ip']]
+    if any(x['status'] == 'pending' and x['site'] == r['site'] for x in mine):
+        return 'again'
+    if len([x for x in mine if t - x['t'] < 3600]) >= REQ_PER_HOUR:
+        return 'rate'
+    if len([x for x in mine if x['status'] == 'pending']) >= REQ_PENDING_PER_IP or len(reqs) >= REQ_MAX:
+        return 'full'
+    return 'ok'
+
+
+def add_request(req, now_ts=None):
+    """a request from the block page -> 'ok' | 'rate' | 'full' | 'invalid'"""
+    t = int(now_ts if now_ts is not None else now())
+    r = validate_request(req)
+    if r is None:
         return 'invalid'
     with Locked():
         reqs = prune_requests(load_json(REQUESTS_FILE, []))
-        mine = [r for r in reqs if r['ip'] == ip]
-        same = next((r for r in mine if r['status'] == 'pending' and r['site'] == site), None)
-        if same is not None:          # asked again: keep one request, with the newest words
-            same.update(name=name, reason=reason, t=t)
+        res = admit(reqs, r, t)
+        if res == 'again':            # asked again: keep one request, with the newest words
+            same = next(x for x in reqs if x['ip'] == r['ip'] and x['status'] == 'pending' and x['site'] == r['site'])
+            same.update(name=r['name'], reason=r['reason'], t=t)
+        elif res == 'ok':
+            reqs.append(dict(r, id=secrets.token_hex(6), t=t, status='pending', until=0))
         else:
-            if len([r for r in mine if t - r['t'] < 3600]) >= REQ_PER_HOUR:
-                return 'rate'
-            if len([r for r in mine if r['status'] == 'pending']) >= REQ_PENDING_PER_IP or len(reqs) >= REQ_MAX:
-                return 'full'
-            reqs.append({'id': secrets.token_hex(6), 't': t, 'ip': ip, 'name': name, 'site': site, 'kind': kind,
-                         'reason': reason, 'why': clean(req.get('why'), 120), 'status': 'pending', 'until': 0})
+            return res
         save_json(REQUESTS_FILE, reqs)
     return 'ok'
 
 
+def inbox_dir():
+    return os.environ.get('UNISENSE_BLOCKPAGE_INBOX', os.path.join(tm.DB_DIR, 'blockpage', 'inbox'))
+
+
+def ingest():
+    """requests the block page left in its inbox (it runs as www and never writes Shield's files)"""
+    for path in sorted(glob.glob(os.path.join(inbox_dir(), '*.json'))):
+        try:
+            with open(path) as f:
+                req = json.loads(f.read(8192))
+            if isinstance(req, dict):
+                add_request(req, req.get('t'))
+        except (OSError, ValueError):
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 def pending_count():
+    ingest()
     return len([r for r in load_json(REQUESTS_FILE, []) if r.get('status') == 'pending'])
 
 
 def cmd_requests():
+    ingest()
     reqs = sorted(load_json(REQUESTS_FILE, []), key=lambda r: (r['status'] != 'pending', -r['t']))
     st = load_json(STATE_FILE, {})
     live = set(st.get('domain_allows', {})) | {n.split('/')[0] for n in st.get('allows', {})}

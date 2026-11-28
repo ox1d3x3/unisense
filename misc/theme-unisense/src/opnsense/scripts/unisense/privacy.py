@@ -68,9 +68,18 @@ def settings():
 
 
 # ------------------------------------------------------------------ built in
+KNOWN_LISTS = {
+    'hgz001': 'hagezi Light', 'hgz002': 'hagezi Normal', 'hgz003': 'hagezi PRO', 'hgz004': 'hagezi PRO mini',
+    'hgz005': 'hagezi PRO++', 'hgz006': 'hagezi PRO++ mini', 'hgz007': 'hagezi Ultimate', 'hgz009': 'hagezi Fake (scams)',
+    'hgz010': 'hagezi Pop-up ads', 'hgz011': 'hagezi Threat intelligence', 'hgz013': 'hagezi Threat intelligence mini',
+    'hgz014': 'hagezi DoH/VPN/Tor/Proxy bypass', 'hgz017': 'hagezi Badware hosters', 'hgz019': 'hagezi Gambling',
+    'hgz022': 'hagezi Social networks', 'oisd1': 'OISD', 'oisd2': 'OISD NSFW (adult)',
+}
+
+
 def list_names():
     """blocklist code -> its name in Unbound's model ("[hagezi] Multi PRO - …" -> "hagezi PRO …")"""
-    names = {'Custom': 'Your blocks'}
+    names = dict(KNOWN_LISTS, Custom='Your blocks')
     try:
         for el in ET.parse(UNBOUND_XML).getroot().iter('type'):
             ov = el.find('OptionValues')
@@ -133,6 +142,17 @@ def unbound_log(n):
                     'list': names.get(r.get('blocklist'), r.get('blocklist') or '') if r.get('blocklist') else '',
                     'source': r.get('source') or '', 'rcode': r.get('rcode') or '', 'ms': r.get('resolve_time_ms') or 0})
     return {'ok': True, 'rows': res}
+
+
+def unbound_why(host, client):
+    """the list that blocked host for client, from Unbound's query log"""
+    rows = stats('details', '--client', client, '--limit', '300') if client else None
+    host = host.lower().rstrip('.')
+    for r in rows if isinstance(rows, list) else []:
+        if (r.get('domain') or '').lower().rstrip('.') == host and r.get('action') in ('Block', 'Drop'):
+            code = r.get('blocklist') or ''
+            return {'ok': True, 'list': list_names().get(code, code)}
+    return {'ok': True, 'list': ''}
 
 
 # ------------------------------------------------------------- AdGuard Home
@@ -270,6 +290,10 @@ def main(argv):
             if prov == 'adguard':
                 return out(agh_log(cfg, n))
             return out({'ok': False, 'rows': []})
+        if cmd == 'why':
+            if prov == 'unbound':
+                return out(unbound_why(argv[2] if len(argv) > 2 else '', argv[3] if len(argv) > 3 else ''))
+            return out({'ok': True, 'list': ''})
         if cmd == 'test':
             if prov == 'adguard':
                 st = AGH(cfg).call('/control/status')

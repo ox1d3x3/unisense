@@ -96,4 +96,8 @@ rm -f "${CACHE_DIR}/opnsense_menu_cache.xml" "${CACHE_DIR}/opnsense_acl_cache.js
 if [ -f "${BASE}/scripts/unisense/shield.py" ] && [ -x "$CONFIGCTL" ]; then
 	"$CONFIGCTL" -dq unisense shield apply >/dev/null 2>&1 || true
 fi
+# block page: start it again when it is switched on
+if [ -f "${BASE}/scripts/unisense/blockpage.py" ] && [ -x "$CONFIGCTL" ]; then
+	"$CONFIGCTL" -dq unisense blockpage start >/dev/null 2>&1 || true
+fi
 exit 0
