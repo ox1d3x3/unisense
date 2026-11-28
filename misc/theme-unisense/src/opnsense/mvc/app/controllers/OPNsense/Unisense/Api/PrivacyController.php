@@ -42,7 +42,7 @@ use OPNsense\Unisense\Privacy;
 class PrivacyController extends ApiControllerBase
 {
     const FIELDS = ['provider', 'level', 'extras', 'gaming', 'allow', 'block', 'agh_url', 'agh_user', 'agh_pass',
-        'redirect', 'dot', 'interfaces'];
+        'redirect', 'dot', 'interfaces', 'bp_enabled', 'bp_address', 'bp_ca'];
 
     private function runJson($action, $params = [], $timeout = 60)
     {
@@ -78,6 +78,8 @@ class PrivacyController extends ApiControllerBase
             'agh_pass' => (string)$mdl->agh_pass !== '',        // never sent back
             'redirect' => (string)$mdl->redirect === '1', 'dot' => (string)$mdl->dot === '1',
             'interfaces' => self::csv($mdl->interfaces),
+            'bp_enabled' => (string)$mdl->bp_enabled === '1', 'bp_address' => (string)$mdl->bp_address,
+            'bp_ca' => (string)$mdl->bp_ca,
         ];
     }
 
@@ -101,6 +103,7 @@ class PrivacyController extends ApiControllerBase
                 'redirect' => class_exists('\OPNsense\Firewall\DNat'),
                 'unbound' => (string)$unbound->general->enabled === '1',
                 'policies' => count(iterator_to_array($unbound->dnsbl->blocklist->iterateItems())),
+                'cas' => Privacy::authorities(), 'domain' => Privacy::systemDomain(),
             ],
         ];
     }
@@ -126,7 +129,7 @@ class PrivacyController extends ApiControllerBase
                     if (is_string($v)) {
                         $set[$f] = $v;          // true/false from settings(): unchanged
                     }
-                } elseif (in_array($f, ['gaming', 'redirect', 'dot'])) {
+                } elseif (in_array($f, ['gaming', 'redirect', 'dot', 'bp_enabled'])) {
                     $set[$f] = !empty($v) && $v !== '0' && $v !== 'false' ? '1' : '0';
                 } elseif (is_array($v)) {
                     $v = array_values(array_unique(array_filter(array_map(function ($x) {
@@ -166,6 +169,12 @@ class PrivacyController extends ApiControllerBase
         }
         if ($res['filter'] || $res['nat']) {
             $backend->configdRun('filter reload');
+        }
+        if ($res['vip']) {
+            $backend->configdRun('interface vip configure');
+        }
+        if ($res['blockpage']) {
+            $backend->configdRun('unisense blockpage restart');
         }
         return ['result' => 'saved', 'settings' => $this->settings(), 'applied' => array_keys(array_filter($res, function ($v, $k) {
             return $k !== 'errors' && $v;
@@ -222,6 +231,12 @@ class PrivacyController extends ApiControllerBase
             return $s;
         }, sprintf('UniSense Privacy: %s %s', $action, $domain));
         return ['ok' => ($r['result'] ?? '') === 'saved'] + $r;
+    }
+
+    /** is the block page running, on which address */
+    public function blockpageAction()
+    {
+        return $this->runJson('unisense blockpage status', [], 15);
     }
 
     public function summaryAction()

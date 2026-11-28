@@ -81,6 +81,12 @@ try {
             if ($res['filter'] || $res['nat']) {
                 $backend->configdRun('filter reload');
             }
+            if ($res['vip']) {
+                $backend->configdRun('interface vip configure');
+            }
+            if ($res['blockpage']) {
+                $backend->configdRun('unisense blockpage restart');
+            }
         }
     } else {
         $mdl = new Privacy();

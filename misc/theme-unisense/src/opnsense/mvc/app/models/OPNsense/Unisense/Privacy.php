@@ -98,7 +98,6 @@ class Privacy extends BaseModel
         $this->managed = implode(',', $items);
     }
 
-    /** an allow-list pattern for a domain and its subdomains (Unbound's allowlist takes regular expressions) */
     /**
      * websites approved for a while from Shield's unblock requests (Shield keeps and ends them)
      * @return string[]
@@ -118,6 +117,7 @@ class Privacy extends BaseModel
         return $res;
     }
 
+    /** an allow-list pattern for a domain and its subdomains (Unbound's allowlist takes regular expressions) */
     public static function pattern($domain)
     {
         return '(^|\.)' . preg_quote(strtolower(trim($domain, '.')), null) . '$';
@@ -162,6 +162,239 @@ class Privacy extends BaseModel
         }));
     }
 
+    private $vip = null;
+
+    private function vipModel()
+    {
+        if ($this->vip === null) {
+            $this->vip = new \OPNsense\Interfaces\Vip();
+        }
+        return $this->vip;
+    }
+
+    /**
+     * the block page: an address on the loopback, rules that let devices reach it,
+     * unblock.<domain>, and (26.1+) web visits to known-bad addresses sent to it
+     */
+    private function syncBlockPage($remove, &$ids, &$res, $unbound, $filter, &$nat)
+    {
+        $on = $this->blockPageWanted($remove);
+        $addr = (string)$this->bp_address;
+        $ifs = $on ? $this->interfaceList() : [];
+
+        /* the address, on lo0 */
+        $vip = $this->vipModel();
+        $node = isset($ids['bp-vip']) ? $vip->getNodeByReference('vip.' . $ids['bp-vip']) : null;
+        if (!$on && $node !== null) {
+            $vip->vip->del($ids['bp-vip']);
+            unset($ids['bp-vip']);
+            $res['vip'] = true;
+        } elseif ($on) {
+            $want = ['mode' => 'ipalias', 'interface' => 'lo0', 'subnet' => $addr, 'subnet_bits' => '32',
+                'descr' => 'UniSense block page'];
+            if ($node === null) {
+                $node = $vip->vip->Add();
+                $ids['bp-vip'] = $node->getAttribute('uuid');
+            }
+            foreach ($want as $k => $v) {
+                if ((string)$node->$k !== $v) {
+                    $node->$k = $v;
+                    $res['vip'] = true;
+                }
+            }
+        }
+        if ($res['vip']) {
+            foreach ($vip->performValidation() as $msg) {
+                $res['errors'][] = 'vip ' . $msg->getField() . ': ' . $msg->getMessage();
+            }
+        }
+
+        /* devices may reach it on 80 and 443 */
+        foreach (['bp-http' => '80', 'bp-https' => '443'] as $key => $port) {
+            $rule = isset($ids[$key]) ? $filter->getNodeByReference('rules.rule.' . $ids[$key]) : null;
+            if ((!$on || !count($ifs)) && $rule !== null) {
+                $filter->rules->rule->del($ids[$key]);
+                unset($ids[$key]);
+                $res['filter'] = true;
+            } elseif ($on && count($ifs)) {
+                $want = ['enabled' => '1', 'action' => 'pass', 'quick' => '1', 'direction' => 'in',
+                    'interface' => implode(',', $ifs), 'protocol' => 'TCP', 'ipprotocol' => 'inet',
+                    'source_net' => 'any', 'destination_net' => $addr, 'destination_port' => $port, 'log' => '0',
+                    'description' => 'UniSense: block page'];
+                if ($rule === null) {
+                    $rule = $filter->rules->rule->Add();
+                    $ids[$key] = $rule->getAttribute('uuid');
+                    $rule->sequence = '5';
+                }
+                foreach ($want as $k => $v) {
+                    if ((string)$rule->$k !== $v) {
+                        $rule->$k = $v;
+                        $res['filter'] = true;
+                    }
+                }
+            }
+        }
+        if ($res['filter']) {
+            foreach ($filter->performValidation() as $msg) {
+                $msg = 'filter ' . $msg->getField() . ': ' . $msg->getMessage();
+                if (!in_array($msg, $res['errors'])) {
+                    $res['errors'][] = $msg;
+                }
+            }
+        }
+
+        /* unblock.<domain> */
+        $host = isset($ids['bp-host']) ? $unbound->getNodeByReference('hosts.host.' . $ids['bp-host']) : null;
+        if (!$on && $host !== null) {
+            $unbound->hosts->host->del($ids['bp-host']);
+            unset($ids['bp-host']);
+            $res['dnsbl'] = true;
+        } elseif ($on) {
+            $want = ['enabled' => '1', 'hostname' => 'unblock', 'domain' => self::systemDomain(), 'rr' => 'A',
+                'server' => $addr, 'description' => 'UniSense: unblock requests'];
+            if ($host === null) {
+                $host = $unbound->hosts->host->Add();
+                $ids['bp-host'] = $host->getAttribute('uuid');
+            }
+            foreach ($want as $k => $v) {
+                if ((string)$host->$k !== $v) {
+                    $host->$k = $v;
+                    $res['dnsbl'] = true;
+                }
+            }
+        }
+
+        /* web visits to known-bad addresses go to the page (26.1+, when Shield's lists are on) */
+        if ($nat === null && class_exists('\OPNsense\Firewall\DNat')) {
+            $nat = new \OPNsense\Firewall\DNat();
+        }
+        if ($nat !== null) {
+            $alias = false;
+            foreach ((new \OPNsense\Firewall\Alias())->aliases->alias->iterateItems() as $a) {
+                $alias = $alias || (string)$a->name === 'unisense_threats';
+            }
+            $ports = (string)$this->bp_ca !== '' ? ['80', '443'] : ['80'];
+            $want = [];
+            if ($on && $alias) {
+                foreach ($ifs as $if) {
+                    foreach ($ports as $p) {
+                        $want['bp-thr-' . $if . '-' . $p] = [$if, $p];
+                    }
+                }
+            }
+            foreach ($ids as $k => $uuid) {
+                if (strpos($k, 'bp-thr-') === 0 && !isset($want[$k])) {
+                    $nat->rule->del($uuid);
+                    unset($ids[$k]);
+                    $res['nat'] = true;
+                }
+            }
+            foreach ($want as $k => [$if, $p]) {
+                $fields = ['interface' => $if, 'ipprotocol' => 'inet', 'protocol' => 'TCP',
+                    'source' => ['network' => 'any'], 'destination' => ['network' => 'unisense_threats', 'port' => $p],
+                    'target' => $addr, 'local-port' => $p, 'pass' => 'pass',
+                    'descr' => 'UniSense Shield: known-bad sites on ' . $if . ' show the block page'];
+                $n = isset($ids[$k]) ? $nat->getNodeByReference('rule.' . $ids[$k]) : null;
+                if ($n === null) {
+                    $n = $nat->rule->Add();
+                    $ids[$k] = $n->getAttribute('uuid');
+                    $n->setNodes($fields);
+                    $res['nat'] = true;
+                } elseif ((string)$n->target !== $addr) {
+                    $n->target = $addr;
+                    $res['nat'] = true;
+                }
+            }
+            if ($res['nat']) {
+                foreach ($nat->performValidation() as $msg) {
+                    $msg = 'nat ' . $msg->getField() . ': ' . $msg->getMessage();
+                    if (!in_array($msg, $res['errors'])) {
+                        $res['errors'][] = $msg;
+                    }
+                }
+            }
+        }
+    }
+
+    /** the block page is on: built in only (it needs Unbound to answer with its address) */
+    public function blockPageWanted($remove = false)
+    {
+        return !$remove && (string)$this->provider === 'unbound' && (string)$this->bp_enabled === '1' &&
+            (string)$this->bp_address !== '';
+    }
+
+    /** the system domain, for unblock.<domain> */
+    public static function systemDomain()
+    {
+        $d = (string)(Config::getInstance()->object()->system->domain ?? '');
+        return $d !== '' ? $d : 'home.arpa';
+    }
+
+    /** the CAs in System: Trust: Authorities that have a private key (to sign the block page's certificates) */
+    public static function authorities()
+    {
+        $res = [];
+        foreach (Config::getInstance()->object()->ca ?? [] as $ca) {
+            if (!empty((string)$ca->prv)) {
+                $res[] = ['refid' => (string)$ca->refid, 'descr' => (string)$ca->descr];
+            }
+        }
+        return $res;
+    }
+
+    /**
+     * the block page's own settings file and the CA it signs with (it runs as www)
+     * @return bool changed
+     */
+    public function writeBlockPageConf($remove = false)
+    {
+        $dir = getenv('UNISENSE_BLOCKPAGE_DIR') ?: '/var/db/unisense/blockpage';
+        $on = $this->blockPageWanted($remove);
+        $crt = $key = '';
+        if ($on && (string)$this->bp_ca !== '') {
+            foreach (Config::getInstance()->object()->ca ?? [] as $ca) {
+                if ((string)$ca->refid === (string)$this->bp_ca && !empty((string)$ca->prv)) {
+                    $crt = base64_decode((string)$ca->crt);
+                    $key = base64_decode((string)$ca->prv);
+                }
+            }
+        }
+        $conf = json_encode(['enabled' => $on, 'address' => (string)$this->bp_address,
+            'domain' => self::systemDomain(), 'ca' => $key !== '', 'ca_refid' => $key !== '' ? (string)$this->bp_ca : '']);
+        $old = @file_get_contents($dir . '/conf.json');
+        $oldCrt = @file_get_contents($dir . '/ca.crt');
+        if (($old === $conf && (string)$oldCrt === $crt) || (!$on && $old === false)) {
+            return false;            // unchanged, or off and never set up
+        }
+        @mkdir($dir, 0750, true);
+        @mkdir($dir . '/inbox', 0750, true);
+        $files = ['conf.json' => [$conf, 0644], 'ca.crt' => [$crt, 0644], 'ca.key' => [$key, 0600]];
+        foreach ($files as $name => [$data, $mode]) {
+            if ($data === '' && $name !== 'conf.json') {
+                @unlink($dir . '/' . $name);
+                continue;
+            }
+            file_put_contents($dir . '/' . $name . '.new', $data);
+            chmod($dir . '/' . $name . '.new', $mode);
+            rename($dir . '/' . $name . '.new', $dir . '/' . $name);
+        }
+        /* a new CA: certificates signed by the old one must go */
+        if ((string)$oldCrt !== $crt) {
+            foreach (glob($dir . '/certs/*.pem') ?: [] as $f) {
+                @unlink($f);
+            }
+        }
+        if (function_exists('posix_getpwnam') && ($pw = posix_getpwnam('www')) && posix_geteuid() === 0) {
+            foreach (['', '/inbox', '/certs', '/conf.json', '/ca.crt', '/ca.key'] as $f) {
+                if (file_exists($dir . $f)) {
+                    @chown($dir . $f, $pw['uid']);
+                    @chgrp($dir . $f, $pw['gid']);
+                }
+            }
+        }
+        return true;
+    }
+
     /** the DNS server clients should use: the firewall itself, or the AdGuard Home host */
     public function dnsServer()
     {
@@ -181,7 +414,8 @@ class Privacy extends BaseModel
      */
     public function syncAndSave($remove = false, $description = 'UniSense Privacy: settings saved')
     {
-        $res = ['dnsbl' => false, 'stats' => false, 'filter' => false, 'nat' => false, 'errors' => []];
+        $res = ['dnsbl' => false, 'stats' => false, 'filter' => false, 'nat' => false, 'vip' => false,
+            'blockpage' => false, 'errors' => []];
         $ids = $this->managedIds();
         $provider = $remove ? 'off' : (string)$this->provider;
 
@@ -211,6 +445,8 @@ class Privacy extends BaseModel
                 'allowlists' => implode(',', $allow),
                 'wildcards' => implode(',', array_map('strtolower', self::csv($this->block))),
                 'description' => self::POLICY,
+                /* blocked names point at the block page (empty: Unbound's 0.0.0.0) */
+                'address' => $this->blockPageWanted($remove) ? (string)$this->bp_address : '',
             ];
             if ($node === null) {
                 $node = $unbound->dnsbl->blocklist->Add();
@@ -312,6 +548,8 @@ class Privacy extends BaseModel
             }
         }
 
+        $this->syncBlockPage($remove, $ids, $res, $unbound, $filter, $nat);
+
         if (count($res['errors'])) {
             return $res;
         }
@@ -324,9 +562,13 @@ class Privacy extends BaseModel
         if ($res['nat']) {
             $nat->serializeToConfig(false, true);
         }
+        if ($res['vip']) {
+            $this->vipModel()->serializeToConfig(false, true);
+        }
         $this->setManaged($ids);
         $this->serializeToConfig(false, true);
         Config::getInstance()->save(['description' => $description]);
+        $res['blockpage'] = $this->writeBlockPageConf($remove) || $res['vip'];
         return $res;
     }
 }

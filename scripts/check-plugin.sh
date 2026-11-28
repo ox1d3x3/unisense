@@ -32,7 +32,7 @@ fi
 for f in settheme.php setup_cron.php setup_shield.php setup_privacy.php; do
 	head -n 1 "$TREE/scripts/unisense/$f" | grep -qx '#!/usr/local/bin/php' || { echo "✗ $f shebang"; fail=1; }
 done
-for f in trafficmap.py shield.py privacy.py; do
+for f in trafficmap.py shield.py privacy.py blockpage.py; do
 	head -n 1 "$TREE/scripts/unisense/$f" | grep -qx '#!/usr/local/bin/python3' || { echo "✗ $f shebang"; fail=1; }
 	python3 -m py_compile "$TREE/scripts/unisense/$f" || { echo "✗ $f syntax"; fail=1; }
 done
@@ -54,7 +54,7 @@ if 'message' in c['trafficmap.flows']:
 for sec in ('geoip.update', 'trafficmap.sample', 'shield.update'):
     if 'description' not in c[sec]:
         print('✗ %s needs a description to be selectable in cron' % sec); ok = False
-for sec in ('shield.status', 'shield.alerts', 'shield.hits', 'privacy.summary', 'privacy.log'):
+for sec in ('shield.status', 'shield.alerts', 'shield.hits', 'privacy.summary', 'privacy.log', 'shield.requests', 'blockpage.status'):
     if 'message' in c[sec]:
         print('✗ %s must not log a message (the pages poll it)' % sec); ok = False
 sys.exit(0 if ok else 1)

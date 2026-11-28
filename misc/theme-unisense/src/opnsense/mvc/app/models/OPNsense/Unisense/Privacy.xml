@@ -65,6 +65,21 @@
             <Default>lan</Default>
         </interfaces>
         <!-- what UniSense created: the Unbound policy, firewall and NAT rules ("kind:uuid,...") -->
+        <!-- the block page (built in only): an address only the firewall answers on, and the CA that signs its HTTPS -->
+        <bp_enabled type="BooleanField">
+            <Default>0</Default>
+            <Required>Y</Required>
+        </bp_enabled>
+        <bp_address type="NetworkField">
+            <Default>198.18.0.80</Default>
+            <NetMaskAllowed>N</NetMaskAllowed>
+            <AddressFamily>ipv4</AddressFamily>
+            <ValidationMessage>Use a single IPv4 address that is not on any of your networks.</ValidationMessage>
+        </bp_address>
+        <bp_ca type="TextField">
+            <Mask>/^[0-9a-f]{0,64}$/</Mask>
+            <ValidationMessage>Choose a CA from System: Trust: Authorities.</ValidationMessage>
+        </bp_ca>
         <managed type="TextField">
             <Mask>/^([a-z0-9-]+:[0-9a-f-]{36}(,[a-z0-9-]+:[0-9a-f-]{36}){0,63})?$/</Mask>
         </managed>

@@ -336,6 +336,26 @@ if ($cmd === 'set') {
         }
     }
     echo count($out) ? implode(';', $out) : 'none', "\n";
+} elseif ($cmd === 'bp') {
+    $ids = $m->managedIds();
+    $o = [];
+    $vip = new \OPNsense\Interfaces\Vip();
+    $n = isset($ids['bp-vip']) ? $vip->getNodeByReference('vip.' . $ids['bp-vip']) : null;
+    $o[] = 'vip=' . ($n === null ? 'none' : (string)$n->interface . ':' . (string)$n->subnet . '/' . (string)$n->subnet_bits);
+    $o[] = 'vips=' . count(iterator_to_array($vip->vip->iterateItems()));
+    $f = new \OPNsense\Firewall\Filter();
+    foreach (['bp-http', 'bp-https'] as $k) {
+        $r = isset($ids[$k]) ? $f->getNodeByReference('rules.rule.' . $ids[$k]) : null;
+        $o[] = $k . '=' . ($r === null ? 'none' : (string)$r->action . ':' . (string)$r->destination_net . ':' . (string)$r->destination_port);
+    }
+    $u = new \OPNsense\Unbound\Unbound();
+    $h = isset($ids['bp-host']) ? $u->getNodeByReference('hosts.host.' . $ids['bp-host']) : null;
+    $o[] = 'host=' . ($h === null ? 'none' : (string)$h->hostname . '.' . (string)$h->domain . '>' . (string)$h->server);
+    $p = isset($ids['policy']) ? $u->getNodeByReference('dnsbl.blocklist.' . $ids['policy']) : null;
+    $o[] = 'address=' . ($p === null ? '' : (string)$p->address);
+    $thr = array_filter(array_keys($ids), function ($k) { return strpos($k, 'bp-thr-') === 0; });
+    $o[] = 'thr=' . (class_exists('\OPNsense\Firewall\DNat') ? implode('+', $thr) : 'n/a');
+    echo implode(' ', $o), "\n";
 }
 PHP
 pv() { "$PHP" "$S/priv.php" "$@" 2>>"$S/priv.err"; }
@@ -365,6 +385,31 @@ pf="$(pv pf)"
 t "AdGuard Home: DNS-over-TLS allowed only to that server" 'printf "%s" "$pf" | grep -q "192.168.1.5" && { [ "$(pv nat)" = n/a ] || [ "$(pv nat)" = none ]; }' show
 pv set provider unbound >/dev/null
 "$PHP" "$SETUPPRIV" sync >/dev/null 2>&1 || true
+
+echo "Block page (real Vip / Filter / Unbound / NAT models)"
+# a real firewall has the loopback interface and, here, a CA with its key
+grep -q "<lo0>" /conf/config.xml || sed -i 's:</interfaces>:<lo0><internal_dynamic>1</internal_dynamic><descr>Loopback</descr><enable>1</enable><if>lo0</if><ipaddr>127.0.0.1</ipaddr><subnet>8</subnet><type>none</type><virtual>1</virtual></lo0></interfaces>:' /conf/config.xml
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=x1wall -keyout "$S/ca.key" -out "$S/ca.crt" >/dev/null 2>&1
+sed -i "s:</opnsense>:<ca><refid>6a1b2c3d4e5f6</refid><descr>x1wall CA</descr><crt>$(base64 -w0 < "$S/ca.crt")</crt><prv>$(base64 -w0 < "$S/ca.key")</prv></ca></opnsense>:" /conf/config.xml
+export UNISENSE_BLOCKPAGE_DIR="$S/bp"
+t "block page address validated" '[ "$(pv set bp_address 10.0.0.0/24)" = invalid:bp_address ] && [ "$(pv set bp_ca "x;y")" = invalid:bp_ca ]' show
+out="$(pv set bp_enabled 1 bp_ca 6a1b2c3d4e5f6) / $("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")" || true
+t "block page on: applied" 'printf "%s" "$out" | grep -q "^saved / .*vip"' show
+out="$(pv bp)"
+t "address on the loopback, rules to it on 80 and 443, unblock.<domain>, Unbound answers with it" 'printf "%s" "$out" | grep -q "vip=lo0:198.18.0.80/32" && printf "%s" "$out" | grep -q "bp-http=pass:198.18.0.80:80" && printf "%s" "$out" | grep -q "bp-https=pass:198.18.0.80:443" && printf "%s" "$out" | grep -qE "host=unblock\.[a-z.]+>198.18.0.80" && printf "%s" "$out" | grep -q "address=198.18.0.80"' show
+t "known-bad sites sent to the page on 26.1+, not offered on 25.7" 'printf "%s" "$out" | grep -qE "thr=(n/a|bp-thr-lan-80\+bp-thr-lan-443)( |$)"' show
+t "its settings file and the CA for www" 'grep -q "\"enabled\":true" "$S/bp/conf.json" && grep -q "\"ca\":true" "$S/bp/conf.json" && cmp -s "$S/bp/ca.crt" "$S/ca.crt" && [ "$(stat -c %a "$S/bp/ca.key")" = 600 ]' show
+t "second sync changes nothing" '[ "$("$PHP" "$SETUPPRIV" sync 2>>"$S/priv.err")" = unchanged ]'
+pv set bp_address 198.18.0.81 >/dev/null
+"$PHP" "$SETUPPRIV" sync >/dev/null 2>>"$S/priv.err" || true
+out="$(pv bp)"
+t "address change: still one address, moved" 'printf "%s" "$out" | grep -q "vip=lo0:198.18.0.81/32 vips=1" && printf "%s" "$out" | grep -q "address=198.18.0.81" && printf "%s" "$out" | grep -q ">198.18.0.81"' show
+pv set bp_enabled 0 >/dev/null
+"$PHP" "$SETUPPRIV" sync >/dev/null 2>>"$S/priv.err" || true
+out="$(pv bp)"
+t "block page off: address, rules, unblock name and redirects gone; Unbound back to 0.0.0.0" 'printf "%s" "$out" | grep -q "vip=none vips=0 bp-http=none bp-https=none host=none address= thr=\(n/a\|\)$" && grep -q "\"enabled\":false" "$S/bp/conf.json"' show
+pv set bp_enabled 1 >/dev/null
+"$PHP" "$SETUPPRIV" sync >/dev/null 2>>"$S/priv.err" || true
 
 echo "Privacy API controller (real models, configd stand-in)"
 cat > "$S/papi.php" <<'PHP'
@@ -400,6 +445,7 @@ t "theme switched back to opnsense" '[ "$(theme)" = opnsense ]'
 t "device labels kept in config" 'grep -q "Kitchen speaker" /conf/config.xml'
 t "cron jobs removed" '! grep -q "unisense geoip update" /conf/config.xml && ! grep -q "unisense trafficmap sample" /conf/config.xml && ! grep -q "unisense shield update" /conf/config.xml'
 t "Privacy policy and rules removed" '! grep -q "UniSense Privacy" /conf/config.xml || ! grep -q "<description>UniSense Privacy</description>" /conf/config.xml'
+t "block page address, rules and unblock name removed" '! grep -q "UniSense block page" /conf/config.xml && ! grep -q "UniSense: block page" /conf/config.xml && ! grep -q "UniSense: unblock requests" /conf/config.xml'
 t "Shield rules and aliases removed" '! grep -q "<name>unisense_" /conf/config.xml && ! grep -q "UniSense Shield: blocked countries (" /conf/config.xml && ! grep -q "unisense_geoblock" /conf/config.xml'
 t "firewall reloaded after removing them" 'grep -q "configctl filter reload" "$S/calls"' show
 

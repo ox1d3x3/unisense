@@ -217,6 +217,7 @@ backend_off() {
 	if [ -x "$PHP" ] && [ -f "$SETUPCRON" ]; then
 		"$PHP" "$SETUPCRON" remove >/dev/null 2>&1 && [ -x "$CONFIGCTL" ] && "$CONFIGCTL" cron restart >/dev/null 2>&1
 	fi
+	[ -x "$CONFIGCTL" ] && "$CONFIGCTL" unisense blockpage stop >/dev/null 2>&1
 	# Privacy: take UniSense's Unbound policy, DNS rules and port forwards out
 	if [ -x "$PHP" ] && [ -f "$SETUPPRIVACY" ]; then
 		if out="$("$PHP" "$SETUPPRIVACY" remove 2>&1)"; then
@@ -225,6 +226,9 @@ backend_off() {
 			esac
 			case "$out" in
 			*filter*|*nat*) [ -x "$CONFIGCTL" ] && "$CONFIGCTL" filter reload >/dev/null 2>&1 ;;
+			esac
+			case "$out" in
+			*vip*) [ -x "$CONFIGCTL" ] && "$CONFIGCTL" interface vip configure >/dev/null 2>&1 ;;
 			esac
 			[ "$out" != "none" ] && ok "Privacy policy and DNS rules removed"
 		else
