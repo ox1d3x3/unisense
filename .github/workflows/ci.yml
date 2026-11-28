@@ -39,6 +39,8 @@ jobs:
         run: python3 tests/test-shield.py
       - name: Privacy backend (Unbound stats, AdGuard Home)
         run: python3 tests/test-privacy.py
+      - name: Block page server (page, requests, HTTPS)
+        run: python3 tests/test-blockpage.py
       - name: World map data is current
         run: node scripts/make-worldmap.mjs --check
       - name: Package

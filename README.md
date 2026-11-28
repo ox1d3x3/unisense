@@ -79,6 +79,14 @@ UniSense survives OPNsense firmware updates: it checks itself after every update
     <td colspan="2" align="center"><sub><b>Privacy: ad and tracker blocking, gaming-safe, with a query log</b></sub></td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/blockpage.png" alt="Block page"></td>
+    <td><img src="docs/screenshots/requests-dark.png" alt="Unblock requests"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>The block page, with Request to unblock</b></sub></td>
+    <td align="center"><sub><b>Requests: approve for a while or for good</b></sub></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/screenshots/grid-light.png" alt="A data grid page"></td>
     <td width="50%"><img src="docs/screenshots/dialog-light.png" alt="An edit dialog"></td>
   </tr>
@@ -146,7 +154,14 @@ UniSense survives OPNsense firmware updates: it checks itself after every update
 - Live counters, the latest blocks, an **address check** (country, network, which lists, and VirusTotal / AbuseIPDB scores with a free API key) and a short **security checkup** of your settings
 - **Gaming-safe**: just firewall table lookups (no packet inspection, no added latency), and scanner lists only ever block inbound
 
-**Privacy** (Lobby → Privacy)
+- **Alerts you can clear**: *Mark as seen* folds them into "Earlier alerts"; *Dismiss* hides one until that device tries again
+
+**Block page and unblock requests** (Lobby → Shield)
+- A blocked website shows **"Stopped by UniSense Shield"**, the reason, and a **Request to unblock** button, instead of a broken page
+- People ask with their name and why (100 words max), on the page or at `http://unblock.<your domain>`; you **Approve** for 1 hour, 24 hours, 1 month or always, or **Decline**, in the *Requests* tab, with a count on the menu
+- HTTPS sites show the page on devices that trust a CA you choose from *System → Trust → Authorities*
+
+**Privacy** (Lobby → Shield → Privacy)
 - **Ad and tracker blocking for every device**, like Pi-hole or AdGuard, built into the firewall: one switch, three levels (Light, Balanced, Strict) on the hagezi lists that ship with OPNsense, plus scams, pop-ups, gambling, social networks, adult content and DNS-over-HTTPS / VPN services
 - **Gaming-safe** by default: logins, stores, matchmaking, anti-cheat and voice for PlayStation, Xbox, Steam, Battle.net, Ubisoft, Activision, EA, Epic, Riot and Discord are never blocked
 - A dashboard: queries and share blocked, the last 24 hours, top blocked domains, top domains, busiest devices, and a searchable query log with **Allow / Block** on every line
@@ -300,7 +315,7 @@ Access is a separate privilege, **Lobby: Shield**. Uninstalling UniSense removes
 
 ## Privacy
 
-**Lobby → Privacy** blocks ads, trackers and malware domains for every device on the network. Pick where the blocking happens:
+**Lobby → Shield → Privacy** blocks ads, trackers and malware domains for every device on the network. Pick where the blocking happens:
 
 - **Built in (recommended).** The firewall's own DNS (Unbound) does it, so there is nothing to install. UniSense adds one policy, **UniSense Privacy**, to *Services → Unbound DNS → Blocklist* (any policies of your own keep working) and switches on Unbound's query statistics for the dashboard. Lists come with OPNsense:
 
@@ -322,7 +337,13 @@ Access is a separate privilege, **Lobby: Shield**. Uninstalling UniSense removes
 - *Refuse DNS-over-TLS to other servers*: phones using "Private DNS" fall back to yours;
 - DNS-over-HTTPS hides in normal web traffic: switch on the *DNS-over-HTTPS, VPN and proxy services* extra (it also blocks public VPN services, so leave it off if you use one).
 
-Access is a separate privilege, **Lobby: Privacy**. Switching Privacy off disables the policy and removes the rules; uninstalling UniSense removes the policy, the rule and the port forwards.
+**Block page.** Under *Stop devices going around it*, switch on *Show a page instead of a broken site*. Blocked names then point at a private address only the firewall answers on (198.18.0.80 by default: change it if it is on one of your networks), where a small UniSense server shows "Stopped by UniSense Shield", the reason and a **Request to unblock** form. On 26.1 and later, web visits to Shield's known-bad addresses show it too.
+
+- **HTTPS**: a page for `https://` sites needs a certificate for each site. Choose a CA from *System → Trust → Authorities* (for example the one your firewall's own GUI certificate comes from) and devices that trust it see the page; other devices see the browser's certificate warning instead, and can still ask at `http://unblock.<your domain>`. Without a CA, HTTPS visits fail at once, as before.
+- **Requests** arrive in *Lobby → Shield → Requests*: who, from which device, which website and why. **Approve** for 1 hour, 24 hours, 1 month or always (a website goes on the Privacy allow list for that time; an address gets a Shield allow), or **Decline**. Each device can send 5 requests an hour.
+- Only page visits get the page: ads, scripts and images that a page loads are answered empty, so a page full of blocked ads costs nothing. Apps and games never show it: they just can't connect, as before.
+
+Privacy now lives in Shield; the separate **Lobby: Privacy** privilege still covers just Privacy. Switching Privacy off disables the policy and removes the rules; uninstalling UniSense removes the policy, the rule and the port forwards.
 
 ---
 
@@ -414,7 +435,19 @@ Open **Lobby → Shield → Recent blocks**, find the address and click 🔍 to 
 <details>
 <summary><b>A site or app stopped working after I turned on Privacy.</b></summary>
 
-Open **Lobby → Privacy**, filter the query log to *Blocked* and type part of the site's name or the device: click **Allow** on the domain. If several domains are involved, step the level down to *Balanced* or *Light*. Games should not be affected (gaming-safe is on by default); if one is, tell me which so it can be added.
+Open **Lobby → Shield → Privacy**, filter the query log to *Blocked* and type part of the site's name or the device: click **Allow** on the domain. If several domains are involved, step the level down to *Balanced* or *Light*. Games should not be affected (gaming-safe is on by default); if one is, tell me which so it can be added.
+</details>
+
+<details>
+<summary><b>Why does my phone show a certificate warning instead of the block page?</b></summary>
+
+For an `https://` site the browser expects that site's own certificate, and only the real site has it. UniSense can show its page there only on devices that trust the CA you chose for the block page (on a PC: import the CA into the system's trusted roots). Everyone else gets the browser's warning, which is still a block. They can ask for the site at `http://unblock.<your domain>`.
+</details>
+
+<details>
+<summary><b>The VPN extra is on, but my VPN app still connects.</b></summary>
+
+Privacy blocks names. A VPN app that has its servers' addresses built in never asks for a name, so DNS blocking can't stop it; the extra stops VPN websites, sign-ups and apps that look up their servers.
 </details>
 
 <details>

@@ -20,7 +20,7 @@
 (function () {
     'use strict';
 
-    var VERSION = '1.6.0';   /* stamped from VERSION by scripts/build.mjs */
+    var VERSION = '1.7.0';   /* stamped from VERSION by scripts/build.mjs */
     var REPO_URL = 'https://github.com/ox1d3x3/unisense';
     var MODE_KEY = 'unisense.mode';
     var MENU_KEY = 'unisense.menu';     /* 'expanded': every menu section stays open */

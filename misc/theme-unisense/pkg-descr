@@ -21,12 +21,18 @@ refreshed every 15 minutes) with pf tables and floating rules, alerts when
 a device tries to reach one, and checks addresses and the firewall's own
 security settings.
 
-Lobby: Privacy blocks ads, trackers and malware domains for every device
+Lobby: Shield also blocks ads, trackers and malware domains for every device
 through Unbound's blocklists (or a connected AdGuard Home), keeps game
-services working, and stops devices from going around it.
+services working, stops devices from going around it, and shows a block page
+where people can ask for a site to be unblocked.
 
 Plugin Changelog
 ================
+
+1.7
+
+* Shield: Overview / Privacy / Requests tabs; dismissible alerts
+* Block page with Request to unblock; approve or decline in Shield
 
 1.6
 
