@@ -33,6 +33,7 @@
  *
  *   setup_privacy.php sync     bring Unbound's policy and the rules in line with
  *                              the settings; prints the parts that changed
+ *   setup_privacy.php sync apply   …and apply it (Shield, when an approved website starts or ends)
  *   setup_privacy.php remove   take everything UniSense made out (uninstall)
  *   setup_privacy.php          what is in place, as JSON
  *
@@ -68,6 +69,19 @@ try {
             return $k !== 'errors' && $v;
         }, ARRAY_FILTER_USE_BOTH));
         echo (count($changed) ? implode(' ', $changed) : ($action === 'remove' ? 'none' : 'unchanged')) . PHP_EOL;
+        if (($argv[2] ?? '') === 'apply' && count($changed)) {
+            $backend = new \OPNsense\Core\Backend();
+            if ($res['dnsbl'] || $res['stats']) {
+                $backend->configdRun('template reload OPNsense/Unbound/*');
+                if ($res['stats']) {
+                    $backend->configdRun('unbound restart');
+                }
+                $backend->configdRun('unbound dnsbl');
+            }
+            if ($res['filter'] || $res['nat']) {
+                $backend->configdRun('filter reload');
+            }
+        }
     } else {
         $mdl = new Privacy();
         echo json_encode(['managed' => $mdl->managedIds(), 'provider' => (string)$mdl->provider]) . PHP_EOL;

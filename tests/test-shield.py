@@ -395,6 +395,71 @@ def run(work):
     r = call('unallow', '85.203.46.168')
     t('removed on request', r['ok'] and r['removed'] and '!85.203.46.168/32' not in table('unisense_threats'), r)
 
+    print('unblock requests')
+    hook = work / 'hook.log'
+    for name in ('php', 'py'):
+        (work / ('fake-' + name)).write_text('#!/bin/sh\necho "%s $*" >> "%s"\n' % (name, hook))
+        (work / ('fake-' + name)).chmod(0o755)
+    S.PRIVACY_PHP, S.PRIVACY_PY = str(work / 'fake-php'), str(work / 'fake-py')
+    hooks = lambda: hook.read_text().splitlines() if hook.exists() else []   # noqa: E731
+    base = {'ip': '10.10.0.20', 'name': 'Mahabub', 'site': 'gigabyte.com', 'reason': 'driver downloads for my board'}
+    t('a valid request is kept', S.add_request(base) == 'ok')
+    r = call('requests')
+    t('listed as pending', r['pending'] == 1 and r['requests'][0]['status'] == 'pending' and
+      r['requests'][0]['kind'] == 'domain', r)
+    t('asking again for the same site keeps one request', S.add_request(dict(base, reason='still need it')) == 'ok'
+      and len(call('requests')['requests']) == 1)
+    t('a reason of 101 words is refused', S.add_request(dict(base, site='a.com', reason='w ' * 101)) == 'invalid')
+    t('a name of 61 characters is refused', S.add_request(dict(base, site='a.com', name='x' * 61)) == 'invalid')
+    t('a site that is neither a domain nor an address is refused',
+      S.add_request(dict(base, site='<script>')) == 'invalid')
+    S.add_request(dict(base, name='a\x00b<i>', site='b.com'))
+    rq = {x['site']: x for x in call('requests')['requests']}
+    t('control characters dropped, the rest kept as written (the page escapes it)', rq['b.com']['name'] == 'ab<i>', rq['b.com'])
+    for i in range(3):
+        S.add_request(dict(base, site='s%d.com' % i))
+    t('the 6th new request in an hour from one device is refused', S.add_request(dict(base, site='s9.com')) == 'rate')
+    t('…another device can still ask', S.add_request(dict(base, ip='10.10.0.21', site='s9.com')) == 'ok')
+    t('status counts pending requests for the badge', call('status')['requests_pending'] == 6)
+    gid = rq['gigabyte.com']['id']
+    r = call('request', 'approve', gid, '1h')
+    st = json.loads((work / 'db/shield/state.json').read_text())
+    t('approve a website for an hour: kept with its end time', r['ok'] and
+      st['domain_allows']['gigabyte.com']['until'] == int(S.NOW) + 3600, st.get('domain_allows'))
+    t('…and Unbound is told once', hooks() == ['php sync apply'], hooks())
+    call('request', 'approve', gid, '1h')
+    t('approving again does not resync', hooks() == ['php sync apply'] and
+      {x['id']: x for x in call('requests')['requests']}[gid]['status'] == 'approved', hooks())
+    call('request', 'decline', rq['b.com']['id'])
+    t('declined', {x['id']: x for x in call('requests')['requests']}[rq['b.com']['id']]['status'] == 'declined')
+    S.add_request(dict(base, site='1.10.16.9', ip='10.10.0.22'))
+    aid = next(x['id'] for x in call('requests')['requests'] if x['site'] == '1.10.16.9')
+    r = call('request', 'approve', aid, '24h')
+    t('an address request uses Allow', r['ok'] and any(a['addr'] == '1.10.16.9' and a['dur'] == '24h' for a in r['allows']), r)
+    t('unknown duration refused', call('request', 'approve', aid, 'week')['ok'] is False)
+    S.NOW += 3601
+    call('status')
+    st = json.loads((work / 'db/shield/state.json').read_text())
+    t('an hour later the website approval ends and Unbound is told', 'gigabyte.com' not in st.get('domain_allows', {})
+      and hooks()[-1] == 'php sync apply' and len(hooks()) == 2, hooks())
+    t('…and the request shows expired', {x['id']: x for x in call('requests')['requests']}[gid]['status'] == 'expired')
+    S.NOW += 31 * 24 * 3600
+    S.add_request(dict(base, site='new.com', ip='10.10.0.30'))
+    t('declined requests are dropped after 30 days', not any(x['site'] == 'b.com' for x in call('requests')['requests']))
+    S.NOW -= 31 * 24 * 3600
+
+    print('dismiss alerts')
+    a = call('alerts')['alerts'][0]
+    n = len(call('alerts')['alerts'])
+    r = call('dismiss', a['device'], a['remote'])
+    t('dismissed: the alert is hidden', r['ok'] and len(call('alerts')['alerts']) == n - 1)
+    t('unknown alert refused', call('dismiss', '1.1.1.1', '2.2.2.2')['ok'] is False)
+    ts = time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(S.NOW))
+    with (logs / ('filter_%s.log' % time.strftime('%Y%m%d', time.localtime(S.NOW)))).open('a') as f:
+        f.write(filterlog(ts, U['threat-out'], 'igc1', 'in', a['device'], a['remote']))
+    al = call('alerts')
+    t('a new try brings it back as new', any(x['remote'] == a['remote'] and x['new'] for x in al['alerts']), al)
+
     print('checkup')
     k = {x['id']: x for x in call('checkup')['checks']}
     t('HTTP GUI flagged', not k['https']['ok'] and k['https']['level'] == 'warn')

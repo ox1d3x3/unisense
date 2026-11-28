@@ -99,6 +99,25 @@ class Privacy extends BaseModel
     }
 
     /** an allow-list pattern for a domain and its subdomains (Unbound's allowlist takes regular expressions) */
+    /**
+     * websites approved for a while from Shield's unblock requests (Shield keeps and ends them)
+     * @return string[]
+     */
+    public static function approvedDomains()
+    {
+        $dir = getenv('UNISENSE_SHIELD_DIR') ?: '/var/db/unisense/shield';
+        $st = @json_decode((string)@file_get_contents($dir . '/state.json'), true);
+        $res = [];
+        foreach (is_array($st) && is_array($st['domain_allows'] ?? null) ? $st['domain_allows'] : [] as $d => $a) {
+            $until = (int)($a['until'] ?? 0);
+            if (($until === 0 || $until > time()) && preg_match('/^[a-z0-9_.-]{1,253}$/', (string)$d)) {
+                $res[] = (string)$d;
+            }
+        }
+        sort($res);
+        return $res;
+    }
+
     public static function pattern($domain)
     {
         return '(^|\.)' . preg_quote(strtolower(trim($domain, '.')), null) . '$';
@@ -181,6 +200,9 @@ class Privacy extends BaseModel
                 }
             }
             foreach (self::csv($this->allow) as $d) {
+                $allow[] = self::pattern($d);
+            }
+            foreach (self::approvedDomains() as $d) {
                 $allow[] = self::pattern($d);
             }
             $want = [

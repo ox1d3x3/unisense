@@ -15,6 +15,10 @@
     shield.py clear             empty every Shield table
     shield.py allow <ip> <for>  let an address through: 1h, 6h, 24h, 1mo or restart
     shield.py unallow <ip>      take a timed exception out
+    shield.py dismiss <device> <remote>   hide an alert until that device tries again
+    shield.py requests          unblock requests from the block page
+    shield.py request add       (JSON on stdin) a new request; request approve <id> <for|forever>; request decline <id>
+    shield.py unallow-domain <domain>     end an approved website early
 
     How it blocks. Three pf tables, each behind "External" aliases and quick
     floating rules that UniSense adds to the firewall (see Shield.php):
@@ -49,6 +53,7 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 import ssl
 import subprocess
 import sys
@@ -62,6 +67,9 @@ import trafficmap as tm  # noqa: E402  (IP databases, pf state parsing)
 SHIELD_DIR = os.environ.get('UNISENSE_SHIELD_DIR', os.path.join(tm.DB_DIR, 'shield'))
 STATE_FILE = os.path.join(SHIELD_DIR, 'state.json')
 LOOKUPS_FILE = os.path.join(SHIELD_DIR, 'lookups.json')
+REQUESTS_FILE = os.path.join(SHIELD_DIR, 'requests.json')
+PRIVACY_PHP = os.environ.get('UNISENSE_PRIVACY_PHP', '/usr/local/opnsense/scripts/unisense/setup_privacy.php')
+PRIVACY_PY = os.environ.get('UNISENSE_PRIVACY_PY', '/usr/local/opnsense/scripts/unisense/privacy.py')
 LOG_DIR = os.environ.get('UNISENSE_FILTER_LOG_DIR', '/var/log/filter')
 CURL = os.environ.get('UNISENSE_CURL', '/usr/local/bin/curl')
 NOW = None  # tests pin the clock
@@ -105,6 +113,15 @@ FEED_BY_ID = {f['id']: f for f in FEEDS}
 
 RECENT_MAX = 200
 ALERTS_MAX = 100
+REQ_NAME_MAX = 60
+REQ_WORDS_MAX = 100
+REQ_CHARS_MAX = 800
+REQ_PER_HOUR = 5
+REQ_PENDING_PER_IP = 10
+REQ_MAX = 200
+REQ_KEEP = 30 * 24 * 3600
+DOMAIN_RE = re.compile(r'^(?=.{1,253}$)([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)+[a-z0-9-]{2,63}$')
+CONTROL_RE = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
 DAYS_KEEP = 30
 READ_MAX = 32 * 1024 * 1024        # log bytes read per run
 FIRST_READ = 4 * 1024 * 1024       # on the very first run: the tail of today's log
@@ -326,6 +343,34 @@ def prune_allows(st):
     if changed:
         st['allows'] = keep
     return changed
+
+
+def prune_domains(st):
+    """timed website approvals that ran out -> their domains"""
+    allows = st.get('domain_allows', {})
+    gone = [d for d, a in allows.items() if a.get('until') and a['until'] <= now()]
+    for d in gone:
+        del allows[d]
+    return gone
+
+
+def privacy_provider():
+    root = config_root()
+    return text(root.find('OPNsense/unisense/privacy') if root is not None else None, 'provider', 'off')
+
+
+def privacy_changed(domains, action):
+    """tell Privacy about approved / expired websites: Unbound re-reads them from the state, AdGuard Home gets rules"""
+    if not domains:
+        return
+    try:
+        if privacy_provider() == 'adguard':
+            for d in domains:
+                subprocess.run([sys.executable, PRIVACY_PY, 'rule', action, d], capture_output=True, timeout=60)
+        else:
+            subprocess.run([PRIVACY_PHP, 'sync', 'apply'], capture_output=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as e:
+        log('could not update Privacy: %s' % e)
 
 
 def allow_entries(cfg, own=(), temp=()):
@@ -695,22 +740,32 @@ def read_log(cfg):
     with Locked():
         st = load_json(STATE_FILE, {})
         before = json.dumps(st, sort_keys=True)
+        gone = []
         try:
             if prune_allows(st):
                 apply(cfg, st)            # a timed exception ran out: take it out of the tables
+            gone = prune_domains(st)
             collect(st, cfg)
             if json.dumps(st, sort_keys=True) != before:
                 save_json(STATE_FILE, st)
         except OSError:
             pass
+    privacy_changed(gone, 'remove')
     return st
+
+
+def visible_alerts(st):
+    """alerts without the dismissed ones (a dismissed alert comes back on a newer try)"""
+    dis = st.get('dismissed', {})
+    return [a for a in st.get('alerts', []) if a['last'] > dis.get(a['device'] + '|' + a['remote'], 0)]
 
 
 def cmd_status():
     cfg = settings()
     st = read_log(cfg)
     tables = st.get('tables', {})
-    unseen = len([a for a in st.get('alerts', []) if a['last'] > st.get('ack', 0)])
+    shown = visible_alerts(st)
+    unseen = len([a for a in shown if a['last'] > st.get('ack', 0)])
     return out({
         'ok': True, 'ts': int(now()), 'enabled': cfg['enabled'], 'countries': cfg['countries'],
         'allow': cfg['allow'], 'feeds': feed_info(st, cfg),
@@ -718,7 +773,7 @@ def cmd_status():
                    for k, t in TABLES.items()},
         'limit': st.get('limit', 0), 'rules': sorted(set(cfg['rules'].values())),
         'updated': st.get('updated', 0), 'stats': stats(st), 'alerts': unseen,
-        'alerts_total': len(st.get('alerts', [])), 'keys': {'vt': bool(cfg['vtkey']), 'abuseipdb': bool(cfg['abusekey'])},
+        'alerts_total': len(shown), 'requests_pending': pending_count(), 'keys': {'vt': bool(cfg['vtkey']), 'abuseipdb': bool(cfg['abusekey'])},
         'db': bool(tm.Lookup().geo4.n), 'errors': st.get('errors', []), 'home': home_country(),
         'allows': allow_list(st, cfg),
     })
@@ -793,7 +848,7 @@ def cmd_alerts():
     cfg = settings()
     st = read_log(cfg)
     ack = st.get('ack', 0)
-    alerts = [dict(a, new=a['last'] > ack) for a in st.get('alerts', [])]
+    alerts = [dict(a, new=a['last'] > ack) for a in visible_alerts(st)]
     # "enabled": alerts only come from the threat lists; the menu badge stops polling without them
     return out({'ok': True, 'enabled': cfg['enabled'], 'unseen': len([a for a in alerts if a['new']]), 'alerts': alerts})
 
@@ -804,6 +859,131 @@ def cmd_ack():
         st['ack'] = int(now())
         save_json(STATE_FILE, st)
     return out({'ok': True})
+
+
+def cmd_dismiss(device, remote):
+    with Locked():
+        st = load_json(STATE_FILE, {})
+        key = device + '|' + remote
+        a = next((x for x in st.get('alerts', []) if x['device'] + '|' + x['remote'] == key), None)
+        if a is None:
+            return out({'ok': False, 'error': 'no such alert'})
+        dis = st.setdefault('dismissed', {})
+        dis[key] = a['last']
+        known = {x['device'] + '|' + x['remote'] for x in st.get('alerts', [])}
+        for k in [k for k in dis if k not in known]:
+            del dis[k]
+        save_json(STATE_FILE, st)
+    return out({'ok': True})
+
+
+# ---------------------------------------------------------------- unblock requests
+def clean(value, limit):
+    return CONTROL_RE.sub('', str(value or '')).strip()[:limit + 1]
+
+
+def site_kind(site):
+    try:
+        ipaddress.ip_address(site)
+        return 'address'
+    except ValueError:
+        return 'domain' if DOMAIN_RE.match(site) else ''
+
+
+def prune_requests(reqs):
+    return [r for r in reqs if r['status'] == 'pending' or now() - r.get('done', r['t']) < REQ_KEEP]
+
+
+def add_request(req, now_ts=None):
+    """a request from the block page -> 'ok' | 'rate' | 'full' | 'invalid'"""
+    t = int(now_ts if now_ts is not None else now())
+    name = clean(req.get('name'), REQ_NAME_MAX)
+    site = clean(req.get('site'), 253).lower().rstrip('.')
+    reason = clean(req.get('reason'), REQ_CHARS_MAX)
+    ip = clean(req.get('ip'), 45)
+    kind = site_kind(site)
+    if (not name or len(name) > REQ_NAME_MAX or not reason or len(reason) > REQ_CHARS_MAX or
+            len(reason.split()) > REQ_WORDS_MAX or not kind or not ip):
+        return 'invalid'
+    with Locked():
+        reqs = prune_requests(load_json(REQUESTS_FILE, []))
+        mine = [r for r in reqs if r['ip'] == ip]
+        same = next((r for r in mine if r['status'] == 'pending' and r['site'] == site), None)
+        if same is not None:          # asked again: keep one request, with the newest words
+            same.update(name=name, reason=reason, t=t)
+        else:
+            if len([r for r in mine if t - r['t'] < 3600]) >= REQ_PER_HOUR:
+                return 'rate'
+            if len([r for r in mine if r['status'] == 'pending']) >= REQ_PENDING_PER_IP or len(reqs) >= REQ_MAX:
+                return 'full'
+            reqs.append({'id': secrets.token_hex(6), 't': t, 'ip': ip, 'name': name, 'site': site, 'kind': kind,
+                         'reason': reason, 'why': clean(req.get('why'), 120), 'status': 'pending', 'until': 0})
+        save_json(REQUESTS_FILE, reqs)
+    return 'ok'
+
+
+def pending_count():
+    return len([r for r in load_json(REQUESTS_FILE, []) if r.get('status') == 'pending'])
+
+
+def cmd_requests():
+    reqs = sorted(load_json(REQUESTS_FILE, []), key=lambda r: (r['status'] != 'pending', -r['t']))
+    st = load_json(STATE_FILE, {})
+    live = set(st.get('domain_allows', {})) | {n.split('/')[0] for n in st.get('allows', {})}
+    for r in reqs:
+        if r['status'] == 'approved' and r.get('until') and r['site'] not in live:
+            r['status'] = 'expired'
+    return out({'ok': True, 'pending': len([r for r in reqs if r['status'] == 'pending']), 'requests': reqs})
+
+
+def cmd_request(action, rid, dur=''):
+    if action == 'add':               # from the block page, JSON on stdin
+        try:
+            req = json.loads(sys.stdin.read(4096) or '{}')
+        except ValueError:
+            req = {}
+        res = add_request(req if isinstance(req, dict) else {})
+        return out({'ok': res == 'ok', 'error': '' if res == 'ok' else res})
+    if action not in ('approve', 'decline'):
+        return out({'ok': False, 'error': 'unknown action'})
+    if action == 'approve' and dur not in DURATIONS and dur != 'forever':
+        return out({'ok': False, 'error': 'unknown duration'})
+    with Locked():
+        reqs = load_json(REQUESTS_FILE, [])
+        r = next((x for x in reqs if x['id'] == rid), None)
+        if r is None:
+            return out({'ok': False, 'error': 'no such request'})
+        r['status'] = 'approved' if action == 'approve' else 'declined'
+        r['done'] = int(now())
+        r['dur'] = dur if action == 'approve' else ''
+        r['until'] = int(now() + DURATIONS[dur]) if action == 'approve' and DURATIONS.get(dur) else 0
+        save_json(REQUESTS_FILE, reqs)
+    if action == 'decline':
+        return out({'ok': True})
+    if r['kind'] == 'address':
+        if dur == 'forever':          # the controller adds it to the permanent list
+            return out({'ok': True})
+        return cmd_allow(r['site'], dur)
+    with Locked():
+        st = load_json(STATE_FILE, {})
+        da = st.setdefault('domain_allows', {})
+        new = r['site'] not in da
+        da[r['site']] = {'dur': dur, 'added': int(now()), 'until': r['until'],
+                         'boot': boot_id() if dur == 'restart' else ''}
+        save_json(STATE_FILE, st)
+    if new:
+        privacy_changed([r['site']], 'allow')
+    return out({'ok': True})
+
+
+def cmd_unallow_domain(domain):
+    with Locked():
+        st = load_json(STATE_FILE, {})
+        found = st.get('domain_allows', {}).pop(domain, None) is not None
+        save_json(STATE_FILE, st)
+    if found:
+        privacy_changed([domain], 'remove')
+    return out({'ok': True, 'removed': found})
 
 
 def allow_list(st, cfg):
@@ -1051,6 +1231,14 @@ def main(argv):
         return cmd_allow(argv[2] if len(argv) > 2 else '', argv[3] if len(argv) > 3 else '')
     if cmd == 'unallow':
         return cmd_unallow(argv[2] if len(argv) > 2 else '')
+    if cmd == 'dismiss':
+        return cmd_dismiss(argv[2] if len(argv) > 2 else '', argv[3] if len(argv) > 3 else '')
+    if cmd == 'requests':
+        return cmd_requests()
+    if cmd == 'request':
+        return cmd_request(*(argv[2:5] + [''] * (3 - len(argv[2:5]))))
+    if cmd == 'unallow-domain':
+        return cmd_unallow_domain(argv[2] if len(argv) > 2 else '')
     sys.stderr.write(__doc__)
     return 2
 
